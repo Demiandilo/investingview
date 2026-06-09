@@ -1118,10 +1118,23 @@ router.post('/gemini', async (req, res) => {
 router.post('/short/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
+
+    // 1. Yahoo Finance real data — populated for most US stocks
+    const yStats = await yf.quoteSummary(symbol, { modules: ['defaultKeyStatistics'] }).catch(() => null);
+    const ks = yStats?.defaultKeyStatistics || {};
+    if (ks.sharesShort != null && ks.shortPercentOfFloat != null) {
+      return res.json({
+        shortInterest: +(ks.shortPercentOfFloat * 100).toFixed(2),
+        daysToCover:   ks.shortRatio     != null ? +ks.shortRatio.toFixed(1)            : null,
+        sharesShorted: ks.sharesShort    != null ? +(ks.sharesShort / 1e6).toFixed(2)   : null,
+        trend: null, analisi: null, _realData: true,
+      });
+    }
+
+    // 2. Gemini estimate with non-US aware prompt
     const [quote, profile, ratios] = await Promise.all([
       cached(`quote_${symbol}`, () => fmp('/quote', { symbol })).catch(() => [null]),
       cached(`profile_${symbol}`, () => fmp('/profile', { symbol })).catch(() => [{}]),
-      // Use a separate key so we don't overwrite the full ratios cache with partial data
       cached(`ratios_short_${symbol}`, async () => {
         const [rtR, kmR] = await Promise.allSettled([fmp('/ratios-ttm', { symbol }), fmp('/key-metrics-ttm', { symbol })]);
         return [{
@@ -1130,14 +1143,25 @@ router.post('/short/:symbol', async (req, res) => {
         }];
       }).catch(() => [{}]),
     ]);
-    const prompt = `Analizza brevemente il titolo ${symbol} (${profile[0]?.companyName}) come potenziale short sell.
-Prezzo: ${quote[0]?.price}, P/E: ${ratios[0]?.peRatioTTM?.toFixed(2)}, Settore: ${profile[0]?.sector}.
-Fornisci in JSON: {"shortInterest": <numero % stimato 0-30>, "daysToCover": <numero 1-10>, "sharesShorted": <numero milioni>, "trend": "aumentando|stabile|diminuendo", "analisi": "...testo breve..."}`;
-    let result = { shortInterest: null, daysToCover: null, sharesShorted: null, trend: null };
+
+    const isNonUS = symbol.includes('.') || /^\d/.test(symbol);
+    const companyName = profile[0]?.companyName || symbol;
+    const prompt = isNonUS
+      ? `Fornisci i dati short interest pubblici più recenti per il titolo ${symbol} (${companyName}).${symbol.endsWith('.MI') ? ' Per titoli italiani verifica le posizioni short CONSOB pubbliche.' : ''} Rispondi SOLO in JSON: {"shortInterest":<% float o null>,"daysToCover":<giorni o null>,"sharesShorted":<milioni o null>,"trend":"aumentando|stabile|diminuendo","analisi":"..."}`
+      : `Analizza brevemente il titolo ${symbol} (${companyName}) come potenziale short sell. Prezzo: ${quote[0]?.price}, P/E: ${ratios[0]?.peRatioTTM?.toFixed(2)}, Settore: ${profile[0]?.sector}. Fornisci in JSON: {"shortInterest":<numero % stimato 0-30>,"daysToCover":<numero 1-10>,"sharesShorted":<numero milioni>,"trend":"aumentando|stabile|diminuendo","analisi":"...testo breve..."}`;
+
+    let result = { shortInterest: null, daysToCover: null, sharesShorted: null, trend: null, analisi: null };
     try {
       const raw = await callGemini(prompt, 10000);
-      result = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+      const parsed = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+      result = { ...result, ...parsed };
     } catch {}
+
+    // Flag when all key fields are null so frontend can show proper empty state
+    if (result.shortInterest == null && result.daysToCover == null && result.sharesShorted == null) {
+      result._noData = true;
+      result._isNonUS = isNonUS;
+    }
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
