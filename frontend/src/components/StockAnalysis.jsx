@@ -404,6 +404,14 @@ function ConfrontoTab({ sym1 }) {
           <ComparisonChart data1={hist1} data2={hist2} sym1={sym1} sym2={sym2} />
         </div>
       )}
+      {!sym2 && (
+        <div className="card" style={{ padding: "48px", textAlign: "center" }}>
+          <div style={{ marginBottom: 12 }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <p style={{ fontSize: 14, color: "var(--text3)" }}>{t("analysis.compare.emptyPrompt")}</p>
+        </div>
+      )}
       {sym2 && (hist1.length === 0 || hist2.length === 0) && !loading && (
         <div style={{ textAlign: "center", padding: "48px", color: "var(--text3)" }}>{t("analysis.compare.noData")}</div>
       )}
@@ -984,6 +992,14 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
                       )}
                     </div>
                   )}
+                  {sentD.articles?.length === 0 && (
+                    <div className="card" style={{ padding: "32px", textAlign: "center" }}>
+                      <div style={{ marginBottom: 10 }}>
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v4"/><path d="M2 13h10"/><path d="M9 18H2"/><path d="M2 9h3"/></svg>
+                      </div>
+                      <p style={{ fontSize: 14, color: "var(--text3)" }}>{t("analysis.sentiment.noArticles")}</p>
+                    </div>
+                  )}
                   {sentD.articles?.map((a, i) => {
                     const title = (lang === 'it' && translatedTitles?.[i]) ? translatedTitles[i] : a.title;
                     return (
@@ -1016,13 +1032,13 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
               </div>
               {!shortD ? (
                 <div style={{ textAlign: "center", padding: "48px" }}><Spinner size={28} /></div>
-              ) : shortD._noData ? (
+              ) : (shortD._noData || (shortD.shortInterest == null && shortD.daysToCover == null && shortD.sharesShorted == null)) ? (
                 <div className="card" style={{ padding: "48px", textAlign: "center" }}>
                   <div style={{ marginBottom: 12, display:"flex", justifyContent:"center" }}>
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                   </div>
                   <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{t("analysis.short.noData")}</p>
-                  <p style={{ fontSize: 13, color: "var(--text3)" }}>{t("analysis.short.noDataDesc")}</p>
+                  <p style={{ fontSize: 13, color: "var(--text3)" }}>{(shortD._isNonUS || inp.includes('.')) ? t("analysis.short.noDataDesc") : t("analysis.short.noDataUS")}</p>
                 </div>
               ) : (
                 <div className="stagger metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(185px,1fr))", gap: 12 }}>
@@ -1038,7 +1054,15 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
           {/* Tab: AI */}
           {tab === "ai" && (
             <div className="fade">
-              {!aiD ? <div style={{ textAlign: "center", padding: "48px" }}><Spinner size={28} /><p style={{ marginTop: 12, color: "var(--text2)" }}>{t("analysis.ai.loading")}</p></div> : (
+              {!aiD ? <div style={{ textAlign: "center", padding: "48px" }}><Spinner size={28} /><p style={{ marginTop: 12, color: "var(--text2)" }}>{t("analysis.ai.loading")}</p></div> : aiD.verdict === 'N/D' ? (
+                <div className="card" style={{ padding: "48px", textAlign: "center" }}>
+                  <div style={{ marginBottom: 14 }}>
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>
+                  </div>
+                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{t("analysis.ai.unavailable")}</p>
+                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => { setAiD(null); API.aiAnalysis(inp, {}).then(setAiD).catch(() => setAiD({ verdict: 'N/D', score: null, orizzonte: null, target_price: null, punti_forza: [], rischi: [], analisi_fondamentale: 'Analisi AI temporaneamente non disponibile', analisi_tecnica: '' })); }}>{t("common.retry")}</button>
+                </div>
+              ) : (
                 <>
                   <div className="card" style={{ padding: "28px", marginBottom: 16 }}>
                     <div className="verdict-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20, marginBottom: 24 }}>
