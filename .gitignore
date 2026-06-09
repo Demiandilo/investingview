@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Build output
+dist/
+build/
+
+# Claude Code project settings
+.claude/
+
+# OS / IDE
+.DS_Store
+.DS_Store?
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# User data files generated at runtime
+backend/users.json
