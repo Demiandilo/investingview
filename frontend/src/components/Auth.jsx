@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../i18n.js";
 
-const BASE = "http://localhost:3001/api";
+const BASE = (import.meta.env.VITE_API_URL || "http://localhost:3001") + "/api";
 async function apiPost(path, body) {
   try {
     const r = await fetch(`${BASE}${path}`, {
@@ -415,28 +415,28 @@ export default function Auth({ onAuth }) {
         <div style={{ textAlign: "center", marginBottom: 28 }}><Logo size={44} /></div>
 
         <div style={{ background: "rgba(255,255,255,0.038)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 20, padding: "36px 32px", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}>
-          <h2 style={{ fontSize: 26, fontWeight: 800, marginBottom: 8, letterSpacing: "-0.035em" }}>
+          <h2 style={{ fontSize: 26, fontWeight: 800, marginBottom: 8, letterSpacing: "-0.035em", color: "#ffffff" }}>
             {isLogin ? t("auth.welcomeBack") : t("auth.createAccount")}
           </h2>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.35)", marginBottom: 28 }}>
+          <p style={{ fontSize: 14, color: "#d1d4dc", marginBottom: 28 }}>
             {isLogin ? t("auth.loginSubtitle") : t("auth.registerSubtitle")}
           </p>
 
           <form onSubmit={isLogin ? handleLogin : handleRegister} noValidate>
             {!isLogin && (
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.38)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.nameLabel")}</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#d1d4dc", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.nameLabel")}</label>
                 <input className="iv-inp" type="text" value={name} onChange={e => setName(e.target.value)} required placeholder={t("auth.namePlaceholder")}
                   style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", color: "white", fontSize: 15, boxSizing: "border-box", transition: "border-color 0.15s, box-shadow 0.15s" }} />
               </div>
             )}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.38)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.emailLabel")}</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#d1d4dc", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.emailLabel")}</label>
               <input className="iv-inp" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder={t("auth.emailPlaceholder")}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", color: "white", fontSize: 15, boxSizing: "border-box", transition: "border-color 0.15s, box-shadow 0.15s" }} />
             </div>
             <div style={{ marginBottom: 26 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.38)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.passwordLabel")}</label>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#d1d4dc", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.passwordLabel")}</label>
               <input className="iv-inp" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder={isLogin ? t("auth.passwordLoginPlaceholder") : t("auth.passwordRegisterPlaceholder")}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", color: "white", fontSize: 15, boxSizing: "border-box", transition: "border-color 0.15s, box-shadow 0.15s" }} />
             </div>
@@ -456,7 +456,7 @@ export default function Auth({ onAuth }) {
             </button>
           </form>
 
-          <p style={{ textAlign: "center", marginTop: 22, fontSize: 14, color: "rgba(255,255,255,0.32)" }}>
+          <p style={{ textAlign: "center", marginTop: 22, fontSize: 14, color: "#d1d4dc" }}>
             {isLogin ? t("auth.switchToRegister") : t("auth.switchToLogin")}{" "}
             <button onClick={() => goMode(isLogin ? "register" : "login")}
               style={{ background: "none", border: "none", color: "#4d8dff", cursor: "pointer", fontSize: 14, fontWeight: 700, padding: 0 }}>
