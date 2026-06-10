@@ -17,6 +17,13 @@ async function apiPost(path, body) {
   }
 }
 
+async function apiGet(path) {
+  try {
+    const r = await fetch(`${BASE}${path}`);
+    return await r.json();
+  } catch { return null; }
+}
+
 /* ─── Logo ─────────────────────────────────────────────────────────────────── */
 export function Logo({ size = 32 }) {
   const id = `lg${size}`;
@@ -51,11 +58,55 @@ const YPRICES    = ["$214", "$210", "$206", "$202", "$198"];
 const XTIMES     = ["09:30","10:30","11:30","12:30","13:30"];
 const XTIMES_X   = [50, 162, 274, 386, 498];
 
+const CHART_X0 = 50, CHART_X1 = 534, CHART_Y0 = 30, CHART_Y1 = 153;
+const VOL_BASE_Y = 197, VOL_MAX_H = 36;
+const CHART_REFRESH_MS = 5 * 60 * 1000;
+
+/** Builds SVG geometry (price line, area fill, volume bars, axis labels) from real daily history (oldest → newest) */
+function buildLiveChart(history) {
+  const n = history.length;
+  const closes = history.map(d => d.close);
+  const lo = Math.min(...closes);
+  const hi = Math.max(...closes);
+  const pad = (hi - lo) * 0.08 || hi * 0.02 || 1;
+  const yMin = lo - pad, yMax = hi + pad;
+  const xStep = n > 1 ? (CHART_X1 - CHART_X0) / (n - 1) : 0;
+
+  const pts = closes.map((c, i) => [
+    CHART_X0 + i * xStep,
+    CHART_Y1 - ((c - yMin) / (yMax - yMin)) * (CHART_Y1 - CHART_Y0),
+  ]);
+
+  const pathD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${CHART_Y1} L${pts[0][0].toFixed(1)},${CHART_Y1} Z`;
+
+  const yPrices = YGRID.map(y => "$" + Math.round(yMax - ((y - CHART_Y0) / (CHART_Y1 - CHART_Y0)) * (yMax - yMin)));
+
+  const xLabels = [0, 0.25, 0.5, 0.75, 1].map(f => {
+    const i = Math.round((n - 1) * f);
+    return new Date(history[i].date).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+  });
+
+  const volumes = history.map(d => d.volume || 0);
+  const maxVol = Math.max(...volumes, 1);
+  const barGap = (CHART_X1 - CHART_X0) / n;
+  const barW = Math.max(2, barGap * 0.6);
+  const volBars = volumes.map((v, i) => ({
+    x: CHART_X0 + i * barGap + (barGap - barW) / 2,
+    h: Math.max(2, (v / maxVol) * VOL_MAX_H),
+    w: barW,
+  }));
+
+  return { pathD, areaD, yPrices, xLabels, volBars, last: pts[n - 1], first: pts[0] };
+}
+
 function ChartPreview() {
   const [cents, setCents]   = useState(20729);
   const [prev,  setPrev]    = useState(20729);
+  const [live,  setLive]    = useState(null); // { quote, geo } once real NVDA data has loaded
   const BASE_P              = 21858;
 
+  // Fallback simulated price — only visible until/unless real data loads
   useEffect(() => {
     const t = setInterval(() => {
       setCents(p => {
@@ -67,10 +118,50 @@ function ChartPreview() {
     return () => clearInterval(t);
   }, []);
 
-  const price   = (cents / 100).toFixed(2);
-  const chgAbs  = ((cents - BASE_P) / 100).toFixed(2);
-  const chgPct  = ((cents - BASE_P) / BASE_P * 100).toFixed(2);
-  const upTotal = cents >= BASE_P;
+  // Real NVDA price + last 30 days history from the backend (Yahoo Finance), refreshed every 5 minutes
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const from = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+      const [q, h] = await Promise.all([apiGet("/quote/NVDA"), apiGet(`/history/NVDA?from=${from}`)]);
+      if (cancelled) return;
+      const quote   = Array.isArray(q) ? q[0] : q;
+      const history = Array.isArray(h) ? h : [];
+      if (quote?.price && history.length > 1) {
+        setLive({ quote, geo: buildLiveChart(history) });
+      }
+    }
+    load();
+    const t = setInterval(load, CHART_REFRESH_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  let price, chgAbs, chgPct, upTotal, pathD, areaD, yPrices, xLabels, volBars, dotX, dotY, refY, label;
+
+  if (live) {
+    const { quote, geo } = live;
+    price   = quote.price.toFixed(2);
+    chgAbs  = (quote.change ?? 0).toFixed(2);
+    chgPct  = (quote.changePercentage ?? 0).toFixed(2);
+    upTotal = (quote.change ?? 0) >= 0;
+    ({ pathD, areaD, yPrices, xLabels, volBars } = geo);
+    [dotX, dotY] = geo.last;
+    refY  = geo.first[1];
+    label = "NASDAQ · Ultimi 30gg";
+  } else {
+    price   = (cents / 100).toFixed(2);
+    chgAbs  = ((cents - BASE_P) / 100).toFixed(2);
+    chgPct  = ((cents - BASE_P) / BASE_P * 100).toFixed(2);
+    upTotal = cents >= BASE_P;
+    pathD   = CHART_PATH;
+    areaD   = CHART_AREA;
+    yPrices = YPRICES;
+    xLabels = XTIMES;
+    volBars = VOL_H.map((h, i) => ({ x: 52 + i * 32.5, h, w: 20 }));
+    dotX = 534; dotY = 41;
+    refY = 132;
+    label = "NASDAQ · Intraday";
+  }
 
   return (
     <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, overflow: "hidden", boxShadow: "0 0 0 1px rgba(41,98,255,0.06), 0 32px 80px rgba(0,0,0,0.7), 0 0 60px rgba(41,98,255,0.06)" }}>
@@ -82,7 +173,7 @@ function ChartPreview() {
             <div className="iv-live-ring" style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "rgba(0,200,83,0.35)" }} />
           </div>
           <span style={{ fontSize: 15, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>NVDA</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em" }}>NASDAQ · Intraday</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em" }}>{label}</span>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: "white", letterSpacing: "-0.03em", lineHeight: 1.1 }}>${price}</div>
@@ -113,36 +204,36 @@ function ChartPreview() {
 
           {/* Y labels */}
           {YGRID.map((y, i) => (
-            <text key={y} x="6" y={y + 4} fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif">{YPRICES[i]}</text>
+            <text key={y} x="6" y={y + 4} fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif">{yPrices[i]}</text>
           ))}
 
           {/* Area fill */}
-          <path d={CHART_AREA} fill="url(#cg)" />
+          <path d={areaD} fill="url(#cg)" />
 
           {/* Price line — draws itself on mount */}
-          <path d={CHART_PATH} stroke="#2962FF" strokeWidth="2.5" fill="none"
+          <path d={pathD} stroke="#2962FF" strokeWidth="2.5" fill="none"
             strokeLinecap="round" strokeLinejoin="round"
             strokeDasharray="1200"
             style={{ animation: "ivDrawLine 2.6s cubic-bezier(.22,1,.36,1) forwards" }}
           />
 
-          {/* Open price reference line */}
-          <line x1="50" y1="132" x2="534" y2="132" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 5" />
+          {/* Reference line (price at start of period) */}
+          <line x1={CHART_X0} y1={refY} x2={CHART_X1} y2={refY} stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 5" />
 
           {/* Current price live dot */}
-          <circle cx="534" cy="41" r="4.5" fill="#00c853" />
-          <circle cx="534" cy="41" r="10" fill="#00c853"
+          <circle cx={dotX} cy={dotY} r="4.5" fill="#00c853" />
+          <circle cx={dotX} cy={dotY} r="10" fill="#00c853"
             style={{ animation: "ivPulseOut 2s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }}
           />
 
           {/* Volume bars */}
-          {VOL_H.map((h, i) => (
-            <rect key={i} x={52 + i * 32.5} y={197 - h} width="20" height={h} fill="rgba(41,98,255,0.2)" rx="1.5" />
+          {volBars.map((b, i) => (
+            <rect key={i} x={b.x} y={VOL_BASE_Y - b.h} width={b.w} height={b.h} fill="rgba(41,98,255,0.2)" rx="1.5" />
           ))}
 
           {/* X labels */}
           {XTIMES_X.map((x, i) => (
-            <text key={x} x={x} y="213" fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif" textAnchor="middle">{XTIMES[i]}</text>
+            <text key={x} x={x} y="213" fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif" textAnchor="middle">{xLabels[i]}</text>
           ))}
         </svg>
       </div>
@@ -223,6 +314,10 @@ const PAGE_BG = {
   color: "white",
 };
 
+/* ─── Password rules ─────────────────────────────────────────────────────── */
+const PW_SPECIAL_RE = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
+const PW_UPPER_RE   = /[A-Z]/;
+
 /* ─── Auth component ──────────────────────────────────────────────────────── */
 export default function Auth({ onAuth }) {
   const [mode, setMode]         = useState("landing");
@@ -232,6 +327,13 @@ export default function Auth({ onAuth }) {
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
   const { t, lang, setLang }    = useLang();
+
+  const pwChecks = {
+    length:  password.length >= 8,
+    upper:   PW_UPPER_RE.test(password),
+    special: PW_SPECIAL_RE.test(password),
+  };
+  const pwValid = pwChecks.length && pwChecks.upper && pwChecks.special;
 
   const reset  = () => { setName(""); setEmail(""); setPassword(""); setError(""); };
   const goMode = m  => { reset(); setMode(m); window.scrollTo(0, 0); };
@@ -249,7 +351,9 @@ export default function Auth({ onAuth }) {
   };
 
   const handleRegister = async e => {
-    e.preventDefault(); setError(""); setLoading(true);
+    e.preventDefault(); setError("");
+    if (!pwValid) { setError(t("auth.pwTooWeak")); return; }
+    setLoading(true);
     const res = await apiPost("/auth/register", { name, email, password });
     setLoading(false);
     if (res?.success) {
@@ -439,6 +543,19 @@ export default function Auth({ onAuth }) {
               <label style={{ fontSize: 11, fontWeight: 700, color: "#d1d4dc", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 7 }}>{t("auth.passwordLabel")}</label>
               <input className="iv-inp" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder={isLogin ? t("auth.passwordLoginPlaceholder") : t("auth.passwordRegisterPlaceholder")}
                 style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.11)", color: "white", fontSize: 15, boxSizing: "border-box", transition: "border-color 0.15s, box-shadow 0.15s" }} />
+              {!isLogin && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "5px 14px", marginTop: 10 }}>
+                  {[
+                    [pwChecks.length,  t("auth.pwReq.length")],
+                    [pwChecks.upper,   t("auth.pwReq.upper")],
+                    [pwChecks.special, t("auth.pwReq.special")],
+                  ].map(([ok, label], i) => (
+                    <span key={i} style={{ fontSize: 12, fontWeight: 600, color: ok ? "#00c853" : "#ff7068", display: "inline-flex", alignItems: "center", gap: 5, transition: "color 0.15s" }}>
+                      {ok ? "✓" : "✗"} {label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {error && (

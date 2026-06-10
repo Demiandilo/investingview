@@ -36,3 +36,6 @@ yarn-error.log*
 
 # User data files generated at runtime
 backend/users.json
+backend/users.db
+backend/users.db-shm
+backend/users.db-wal

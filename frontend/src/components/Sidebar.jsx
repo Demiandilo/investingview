@@ -1,12 +1,19 @@
+import { useState } from "react";
 import { Logo } from "./Auth.jsx";
 import { useLang } from "../i18n.js";
 
-const NAV_IDS = ["dashboard", "analisi", "screener", "portfolio", "watchlist", "glossario"];
-const NAV_KEYS = { dashboard: "home", analisi: "analisi", screener: "screener", portfolio: "portfolio", watchlist: "watch", glossario: "glossario" };
+/* ─── Nav ids ──────────────────────────────────────────────────────────────── */
+const SIDEBAR_IDS    = ["dashboard", "analisi", "screener", "portfolio", "watchlist", "glossario"];
+const BOTTOM_NAV_IDS = ["dashboard", "analisi", "screener", "watchlist", "portfolio"];
+const NAV_KEYS = {
+  dashboard: "home", analisi: "analisi", screener: "screener",
+  portfolio: "portfolio", watchlist: "watch", glossario: "glossario",
+};
 
-function NavIcon({ id, active }) {
+/* ─── Icons ────────────────────────────────────────────────────────────────── */
+function NavIcon({ id, active, size = 22 }) {
   const c = active ? "var(--blue)" : "var(--text3)";
-  const s = { width: 22, height: 22 };
+  const s = { width: size, height: size };
   const icons = {
     dashboard: <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>,
     analisi:   <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
@@ -14,33 +21,133 @@ function NavIcon({ id, active }) {
     portfolio: <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>,
     watchlist: <svg {...s} viewBox="0 0 24 24" fill={active ? "var(--blue)" : "none"} stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
     glossario: <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+    profilo:   <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   };
   return icons[id] || null;
 }
 
-function LangToggle({ lang, onSetLang }) {
+/* ─── Lang toggle ──────────────────────────────────────────────────────────── */
+function LangToggle({ lang, onSetLang, large = false }) {
   return (
     <div style={{ display: "flex", gap: 4 }}>
       {["it", "en"].map(l => (
-        <button
-          key={l}
-          onClick={() => onSetLang(l)}
-          style={{
-            padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-            cursor: "pointer", border: "1px solid",
-            background: lang === l ? "var(--blue)" : "transparent",
-            color: lang === l ? "#fff" : "var(--text3)",
-            borderColor: lang === l ? "var(--blue)" : "var(--border)",
-            letterSpacing: ".04em", transition: "all .15s",
-          }}
-        >
-          {l.toUpperCase()}
-        </button>
+        <button key={l} onClick={() => onSetLang(l)} style={{
+          padding: large ? "7px 16px" : "5px 10px",
+          borderRadius: 6, fontSize: large ? 14 : 11, fontWeight: 700,
+          cursor: "pointer", border: "1px solid",
+          background: lang === l ? "var(--blue)" : "transparent",
+          color: lang === l ? "#fff" : "var(--text3)",
+          borderColor: lang === l ? "var(--blue)" : "var(--border)",
+          letterSpacing: ".04em", transition: "all .15s",
+          minWidth: large ? 44 : undefined,
+        }}>{l.toUpperCase()}</button>
       ))}
     </div>
   );
 }
 
+/* ─── Profile Drawer (mobile only) ────────────────────────────────────────── */
+function ProfileDrawer({ open, onClose, user, dark, onToggleDark, lang, onSetLang, onNav, onLogout }) {
+  const { t } = useLang();
+  if (!open) return null;
+
+  const row = {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "15px 0", borderBottom: "1px solid var(--border2)",
+  };
+  const rowLabel = { display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 500, color: "var(--text)" };
+
+  return (
+    <>
+      {/* Overlay */}
+      <div onClick={onClose} style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.55)",
+        zIndex: 299, backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      }} />
+      {/* Drawer */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        background: "var(--surface)", borderRadius: "20px 20px 0 0",
+        zIndex: 300, padding: "0 24px calc(env(safe-area-inset-bottom, 12px) + 16px)",
+        boxShadow: "0 -8px 40px rgba(0,0,0,0.28)",
+        animation: "slideUp .3s cubic-bezier(.22,1,.36,1)",
+      }}>
+        {/* Handle */}
+        <div style={{ width: 40, height: 4, background: "var(--border)", borderRadius: 2, margin: "12px auto 20px" }} />
+
+        {/* User info */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "var(--surface2)", borderRadius: 14, marginBottom: 20 }}>
+          <div style={{ width: 46, height: 46, borderRadius: "50%", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
+            {(user?.name?.[0] || "U").toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{user?.name || "Utente"}</p>
+            <p style={{ fontSize: 12, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.email || ""}</p>
+          </div>
+        </div>
+
+        {/* Settings */}
+        <div>
+          {/* Dark / Light mode */}
+          <div style={row}>
+            <div style={rowLabel}>
+              {dark ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+              <span>{dark ? t("nav.lightMode") : t("nav.darkMode")}</span>
+            </div>
+            <button onClick={onToggleDark} style={{
+              width: 48, height: 27, borderRadius: 14, border: "none", cursor: "pointer",
+              background: dark ? "var(--blue)" : "var(--surface2)",
+              position: "relative", transition: "background .2s", padding: 0,
+            }}>
+              <span style={{
+                position: "absolute", top: 3, left: dark ? 23 : 3,
+                width: 21, height: 21, borderRadius: "50%", background: dark ? "#fff" : "var(--text3)",
+                transition: "left .2s",
+              }} />
+            </button>
+          </div>
+
+          {/* Language */}
+          <div style={row}>
+            <div style={rowLabel}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <span>Lingua</span>
+            </div>
+            <LangToggle lang={lang} onSetLang={onSetLang} large />
+          </div>
+
+          {/* Glossario */}
+          <button onClick={() => { onNav("glossario"); onClose(); }} style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 12,
+            padding: "15px 0", borderBottom: "1px solid var(--border2)",
+            background: "none", border: "none", borderBottom: "1px solid var(--border2)",
+            cursor: "pointer", fontSize: 15, fontWeight: 500, color: "var(--text)",
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            {t("nav.glossario")}
+          </button>
+
+          {/* Logout */}
+          <button onClick={() => { onLogout(); onClose(); }} style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 12,
+            padding: "16px 0", marginTop: 4,
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 15, fontWeight: 600, color: "var(--red)",
+          }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            {t("nav.logout")}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─── Desktop Sidebar ──────────────────────────────────────────────────────── */
 export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpenSearch, user, onLogout, lang, onSetLang }) {
   const { t } = useLang();
 
@@ -56,7 +163,6 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
               <p style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.01em" }}>{t("nav.appTagline")}</p>
             </div>
           </div>
-          {/* Dark mode toggle */}
           <button onClick={onToggleDark} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "var(--text2)" }} title={dark ? t("nav.lightMode") : t("nav.darkMode")}>
             {dark ? (
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -65,7 +171,6 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
             )}
           </button>
         </div>
-        {/* Search shortcut */}
         <button onClick={onOpenSearch} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 10, background: "var(--surface2)", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text3)", fontSize: 13 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           {t("nav.search")}
@@ -75,7 +180,7 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
 
       {/* Nav */}
       <nav style={{ padding: "12px 10px", flex: 1 }}>
-        {NAV_IDS.map(id => (
+        {SIDEBAR_IDS.map(id => (
           <button key={id} className={`nav-item${page === id ? " active" : ""}`} onClick={() => onNav(id)}>
             <NavIcon id={id} active={page === id} />
             {t(`nav.${NAV_KEYS[id]}`)}
@@ -99,10 +204,7 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
           </div>
           <LangToggle lang={lang} onSetLang={onSetLang} />
         </div>
-        <button
-          onClick={onLogout}
-          style={{ width: "100%", padding: "8px 12px", borderRadius: 9, background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text2)", fontSize: 13, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}
-        >
+        <button onClick={onLogout} style={{ width: "100%", padding: "8px 12px", borderRadius: 9, background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text2)", fontSize: 13, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           {t("nav.logout")}
         </button>
@@ -111,22 +213,64 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
   );
 }
 
-export function BottomNav({ page, onNav, watchlistCount }) {
+/* ─── Mobile Bottom Nav ────────────────────────────────────────────────────── */
+export function BottomNav({ page, onNav, watchlistCount, dark, onToggleDark, user, onLogout, lang, onSetLang }) {
   const { t } = useLang();
+  const [profileOpen, setProfileOpen] = useState(false);
+
   return (
-    <nav className="mobile-tabbar" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200, background: "var(--surface)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", borderTop: "1px solid var(--border2)", display: "flex", alignItems: "stretch", paddingBottom: "env(safe-area-inset-bottom, 6px)" }}>
-      {NAV_IDS.map(id => {
-        const active = page === id;
-        return (
-          <button key={id} onClick={() => onNav(id)} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: "10px 2px 8px", background: "none", border: "none", cursor: "pointer", position: "relative", WebkitTapHighlightColor: "transparent" }}>
-            <NavIcon id={id} active={active} />
-            <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? "var(--blue)" : "var(--text3)" }}>{t(`nav.${NAV_KEYS[id]}`)}</span>
-            {id === "watchlist" && watchlistCount > 0 && (
-              <span style={{ position: "absolute", top: 6, right: "calc(50% - 16px)", background: "var(--red)", color: "white", borderRadius: 8, fontSize: 9, padding: "1px 5px", fontWeight: 700 }}>{watchlistCount}</span>
-            )}
-          </button>
-        );
-      })}
-    </nav>
+    <>
+      <nav className="mobile-tabbar" style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
+        background: "var(--surface)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
+        borderTop: "1px solid var(--border2)", display: "flex", alignItems: "stretch",
+        paddingBottom: "env(safe-area-inset-bottom, 6px)",
+      }}>
+        {BOTTOM_NAV_IDS.map(id => {
+          const active = page === id;
+          return (
+            <button key={id} onClick={() => onNav(id)} style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+              justifyContent: "center", gap: 3, padding: "10px 2px 8px",
+              background: "none", border: "none", cursor: "pointer", position: "relative",
+              WebkitTapHighlightColor: "transparent",
+            }}>
+              <NavIcon id={id} active={active} />
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 400, color: active ? "var(--blue)" : "var(--text3)" }}>
+                {t(`nav.${NAV_KEYS[id]}`)}
+              </span>
+              {id === "watchlist" && watchlistCount > 0 && (
+                <span style={{ position: "absolute", top: 6, right: "calc(50% - 16px)", background: "var(--red)", color: "white", borderRadius: 8, fontSize: 9, padding: "1px 5px", fontWeight: 700 }}>{watchlistCount}</span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Profilo tab */}
+        <button onClick={() => setProfileOpen(true)} style={{
+          flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", gap: 3, padding: "10px 2px 8px",
+          background: "none", border: "none", cursor: "pointer",
+          WebkitTapHighlightColor: "transparent",
+        }}>
+          <NavIcon id="profilo" active={profileOpen} />
+          <span style={{ fontSize: 10, fontWeight: profileOpen ? 700 : 400, color: profileOpen ? "var(--blue)" : "var(--text3)" }}>
+            Profilo
+          </span>
+        </button>
+      </nav>
+
+      <ProfileDrawer
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        user={user}
+        dark={dark}
+        onToggleDark={onToggleDark}
+        lang={lang}
+        onSetLang={onSetLang}
+        onNav={id => { onNav(id); setProfileOpen(false); }}
+        onLogout={onLogout}
+      />
+    </>
   );
 }

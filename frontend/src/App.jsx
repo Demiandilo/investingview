@@ -169,7 +169,17 @@ function AppInner() {
           </div>
         </main>
 
-        <BottomNav page={page} onNav={p => go(p)} watchlistCount={watchlist.length} />
+        <BottomNav
+          page={page}
+          onNav={p => go(p)}
+          watchlistCount={watchlist.length}
+          dark={dark}
+          onToggleDark={() => setDark(d => !d)}
+          user={user}
+          onLogout={handleLogout}
+          lang={lang}
+          onSetLang={setLang}
+        />
       </div>
 
       {showSearch && (
