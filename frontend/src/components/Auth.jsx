@@ -164,7 +164,7 @@ function ChartPreview() {
   }
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, overflow: "hidden", boxShadow: "0 0 0 1px rgba(41,98,255,0.06), 0 32px 80px rgba(0,0,0,0.7), 0 0 60px rgba(41,98,255,0.06)" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, overflow: "hidden", maxHeight: 320, boxShadow: "0 12px 28px rgba(0,0,0,0.28)" }}>
       {/* Ticker header */}
       <div style={{ padding: "16px 22px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -297,7 +297,7 @@ const CSS = `
   .iv-inp:focus { border-color: rgba(59,126,255,0.6) !important; box-shadow: 0 0 0 3px rgba(41,98,255,0.14) !important; outline: none; }
   .iv-inp::placeholder { color: rgba(255,255,255,0.25); }
   .iv-sub:hover:not(:disabled) { background: #3b7eff !important; }
-  @media (max-width: 940px)  { .iv-hero { flex-direction: column !important; padding-top: 110px !important; } .iv-chart-col { display: none !important; } .iv-text-col { max-width: 100% !important; } .iv-h1 { font-size: 52px !important; } }
+  @media (max-width: 940px)  { .iv-hero { flex-direction: column !important; gap: 40px !important; padding-top: 110px !important; } .iv-text-col { flex: 0 0 auto !important; max-width: 100% !important; } .iv-chart-col { flex: 0 0 auto !important; width: 100% !important; max-width: 360px !important; margin: 0 auto !important; } .iv-h1 { font-size: 52px !important; } }
   @media (max-width: 680px)  { .iv-feat-grid { grid-template-columns: 1fr !important; } .iv-reviews { flex-direction: column !important; align-items: stretch !important; } .iv-stats-row { gap: 32px !important; } .iv-h1 { font-size: 40px !important; } .iv-h2 { font-size: 32px !important; } }
   @media (max-width: 480px)  { .iv-cta-h { font-size: 30px !important; } }
 `;
@@ -403,7 +403,7 @@ export default function Auth({ onAuth }) {
         <div style={{ maxWidth: 1200, margin: "0 auto", width: "100%", display: "flex", gap: 72, alignItems: "center", paddingTop: 58 }} className="iv-hero">
 
           {/* Left: text */}
-          <div style={{ maxWidth: 500, flexShrink: 0 }} className="iv-text-col">
+          <div style={{ flex: "0 0 55%", minWidth: 0 }} className="iv-text-col">
             <div style={{ display: "inline-flex", alignItems: "center", gap: 11, marginBottom: 32 }}>
               <Logo size={42} />
               <span style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.04em" }}>InvestingView</span>
@@ -435,7 +435,7 @@ export default function Auth({ onAuth }) {
           </div>
 
           {/* Right: animated chart */}
-          <div style={{ flex: 1, minWidth: 0 }} className="iv-chart-col">
+          <div style={{ flex: "0 0 45%", minWidth: 0 }} className="iv-chart-col">
             <ChartPreview />
           </div>
         </div>
