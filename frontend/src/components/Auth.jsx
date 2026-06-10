@@ -49,192 +49,103 @@ export function Logo({ size = 32 }) {
   );
 }
 
-/* ─── Animated chart mock ─────────────────────────────────────────────────── */
-const CHART_PATH = "M50,132 L72,127 L94,140 L116,124 L138,118 L160,131 L182,119 L204,111 L226,122 L248,113 L270,100 L292,106 L314,92 L336,84 L358,91 L380,78 L402,70 L424,76 L446,62 L468,54 L490,59 L512,47 L534,41";
-const CHART_AREA = CHART_PATH + " L534,153 L50,153 Z";
-const VOL_H      = [18,24,16,30,22,28,15,32,24,26,19,34,20,27,36];
-const YGRID      = [30, 62, 94, 126, 153];
-const YPRICES    = ["$214", "$210", "$206", "$202", "$198"];
-const XTIMES     = ["09:30","10:30","11:30","12:30","13:30"];
-const XTIMES_X   = [50, 162, 274, 386, 498];
-
-const CHART_X0 = 50, CHART_X1 = 534, CHART_Y0 = 30, CHART_Y1 = 153;
-const VOL_BASE_Y = 197, VOL_MAX_H = 36;
+/* ─── Live mini charts (NVDA / GOOGL / RACE.MI) ──────────────────────────── */
 const CHART_REFRESH_MS = 5 * 60 * 1000;
+const CCY_SYMBOL = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
+const MINI_VB_W = 300, MINI_VB_H = 100;
+const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 8, MINI_Y1 = 92;
 
-/** Builds SVG geometry (price line, area fill, volume bars, axis labels) from real daily history (oldest → newest) */
-function buildLiveChart(history) {
-  const n = history.length;
-  const closes = history.map(d => d.close);
+/** Builds a compact line + area path from daily history (API returns newest → oldest) */
+function buildMiniChart(history) {
+  const ordered = [...history].reverse(); // oldest -> newest
+  const n = ordered.length;
+  const closes = ordered.map(d => d.close);
   const lo = Math.min(...closes);
   const hi = Math.max(...closes);
   const pad = (hi - lo) * 0.08 || hi * 0.02 || 1;
   const yMin = lo - pad, yMax = hi + pad;
-  const xStep = n > 1 ? (CHART_X1 - CHART_X0) / (n - 1) : 0;
+  const xStep = n > 1 ? (MINI_X1 - MINI_X0) / (n - 1) : 0;
 
   const pts = closes.map((c, i) => [
-    CHART_X0 + i * xStep,
-    CHART_Y1 - ((c - yMin) / (yMax - yMin)) * (CHART_Y1 - CHART_Y0),
+    MINI_X0 + i * xStep,
+    MINI_Y1 - ((c - yMin) / (yMax - yMin)) * (MINI_Y1 - MINI_Y0),
   ]);
 
   const pathD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${CHART_Y1} L${pts[0][0].toFixed(1)},${CHART_Y1} Z`;
+  const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${MINI_Y1} L${pts[0][0].toFixed(1)},${MINI_Y1} Z`;
 
-  const yPrices = YGRID.map(y => "$" + Math.round(yMax - ((y - CHART_Y0) / (CHART_Y1 - CHART_Y0)) * (yMax - yMin)));
-
-  const xLabels = [0, 0.25, 0.5, 0.75, 1].map(f => {
-    const i = Math.round((n - 1) * f);
-    return new Date(history[i].date).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
-  });
-
-  const volumes = history.map(d => d.volume || 0);
-  const maxVol = Math.max(...volumes, 1);
-  const barGap = (CHART_X1 - CHART_X0) / n;
-  const barW = Math.max(2, barGap * 0.6);
-  const volBars = volumes.map((v, i) => ({
-    x: CHART_X0 + i * barGap + (barGap - barW) / 2,
-    h: Math.max(2, (v / maxVol) * VOL_MAX_H),
-    w: barW,
-  }));
-
-  return { pathD, areaD, yPrices, xLabels, volBars, last: pts[n - 1], first: pts[0] };
+  return { pathD, areaD, last: pts[n - 1] };
 }
 
-function ChartPreview() {
-  const [cents, setCents]   = useState(20729);
-  const [prev,  setPrev]    = useState(20729);
-  const [live,  setLive]    = useState(null); // { quote, geo } once real NVDA data has loaded
-  const BASE_P              = 21858;
+/** Compact live ticker card: symbol, exchange, price, change% and a mini line chart */
+function MiniChart({ symbol, exchange }) {
+  const [live, setLive] = useState(null);
 
-  // Fallback simulated price — only visible until/unless real data loads
-  useEffect(() => {
-    const t = setInterval(() => {
-      setCents(p => {
-        setPrev(p);
-        const d = Math.round((Math.random() - 0.46) * 35);
-        return Math.max(20400, Math.min(22200, p + d));
-      });
-    }, 2200);
-    return () => clearInterval(t);
-  }, []);
-
-  // Real NVDA price + last 30 days history from the backend (Yahoo Finance), refreshed every 5 minutes
   useEffect(() => {
     let cancelled = false;
     async function load() {
       const from = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
-      const [q, h] = await Promise.all([apiGet("/quote/NVDA"), apiGet(`/history/NVDA?from=${from}`)]);
+      const [q, h] = await Promise.all([apiGet(`/quote/${symbol}`), apiGet(`/history/${symbol}?from=${from}`)]);
       if (cancelled) return;
       const quote   = Array.isArray(q) ? q[0] : q;
       const history = Array.isArray(h) ? h : [];
       if (quote?.price && history.length > 1) {
-        setLive({ quote, geo: buildLiveChart(history) });
+        setLive({ quote, geo: buildMiniChart(history) });
       }
     }
     load();
     const t = setInterval(load, CHART_REFRESH_MS);
     return () => { cancelled = true; clearInterval(t); };
-  }, []);
+  }, [symbol]);
 
-  let price, chgAbs, chgPct, upTotal, pathD, areaD, yPrices, xLabels, volBars, dotX, dotY, refY, label;
-
-  if (live) {
-    const { quote, geo } = live;
-    price   = quote.price.toFixed(2);
-    chgAbs  = (quote.change ?? 0).toFixed(2);
-    chgPct  = (quote.changePercentage ?? 0).toFixed(2);
-    upTotal = (quote.change ?? 0) >= 0;
-    ({ pathD, areaD, yPrices, xLabels, volBars } = geo);
-    [dotX, dotY] = geo.last;
-    refY  = geo.first[1];
-    label = "NASDAQ · Ultimi 30gg";
-  } else {
-    price   = (cents / 100).toFixed(2);
-    chgAbs  = ((cents - BASE_P) / 100).toFixed(2);
-    chgPct  = ((cents - BASE_P) / BASE_P * 100).toFixed(2);
-    upTotal = cents >= BASE_P;
-    pathD   = CHART_PATH;
-    areaD   = CHART_AREA;
-    yPrices = YPRICES;
-    xLabels = XTIMES;
-    volBars = VOL_H.map((h, i) => ({ x: 52 + i * 32.5, h, w: 20 }));
-    dotX = 534; dotY = 41;
-    refY = 132;
-    label = "NASDAQ · Intraday";
-  }
+  const quote  = live?.quote;
+  const up     = (quote?.change ?? 0) >= 0;
+  const color  = up ? "#00c853" : "#ff3b30";
+  const ccy    = CCY_SYMBOL[quote?.currency] || "$";
+  const { pathD, areaD, last } = live?.geo || {};
+  const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 18, overflow: "hidden", maxHeight: 320, boxShadow: "0 12px 28px rgba(0,0,0,0.28)" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, overflow: "hidden", height: 140, boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column" }}>
       {/* Ticker header */}
-      <div style={{ padding: "16px 22px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ position: "relative", width: 10, height: 10 }}>
-            <div style={{ position: "absolute", width: 8, height: 8, borderRadius: "50%", background: "#00c853", top: 1, left: 1 }} />
-            <div className="iv-live-ring" style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "rgba(0,200,83,0.35)" }} />
-          </div>
-          <span style={{ fontSize: 15, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>NVDA</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em" }}>{label}</span>
+      <div style={{ padding: "10px 16px 4px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em" }}>{exchange}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "white", letterSpacing: "-0.03em", lineHeight: 1.1 }}>${price}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: upTotal ? "#00c853" : "#ff3b30", marginTop: 2 }}>
-            {upTotal ? "+" : ""}{chgAbs} ({upTotal ? "+" : ""}{chgPct}%)
+          <div style={{ fontSize: 16, fontWeight: 800, color: "white", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+            {quote ? `${ccy}${quote.price.toFixed(2)}` : "···"}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: quote ? color : "rgba(255,255,255,0.3)", marginTop: 2 }}>
+            {quote ? `${up ? "+" : ""}${(quote.changePercentage ?? 0).toFixed(2)}%` : "—"}
           </div>
         </div>
       </div>
 
-      {/* SVG chart */}
-      <div style={{ padding: "4px 0 14px" }}>
-        <svg viewBox="0 0 590 215" style={{ width: "100%", display: "block" }}>
-          <defs>
-            <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"  stopColor="#2962FF" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#2962FF" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* Horizontal grid */}
-          {YGRID.map(y => (
-            <line key={y} x1="48" y1={y} x2="545" y2={y} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-          ))}
-          {/* Vertical grid */}
-          {XTIMES_X.slice(1, -1).map(x => (
-            <line key={x} x1={x} y1="30" x2={x} y2="153" stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
-          ))}
-
-          {/* Y labels */}
-          {YGRID.map((y, i) => (
-            <text key={y} x="6" y={y + 4} fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif">{yPrices[i]}</text>
-          ))}
-
-          {/* Area fill */}
-          <path d={areaD} fill="url(#cg)" />
-
-          {/* Price line — draws itself on mount */}
-          <path d={pathD} stroke="#2962FF" strokeWidth="2.5" fill="none"
-            strokeLinecap="round" strokeLinejoin="round"
-            strokeDasharray="1200"
-            style={{ animation: "ivDrawLine 2.6s cubic-bezier(.22,1,.36,1) forwards" }}
-          />
-
-          {/* Reference line (price at start of period) */}
-          <line x1={CHART_X0} y1={refY} x2={CHART_X1} y2={refY} stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3 5" />
-
-          {/* Current price live dot */}
-          <circle cx={dotX} cy={dotY} r="4.5" fill="#00c853" />
-          <circle cx={dotX} cy={dotY} r="10" fill="#00c853"
-            style={{ animation: "ivPulseOut 2s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }}
-          />
-
-          {/* Volume bars */}
-          {volBars.map((b, i) => (
-            <rect key={i} x={b.x} y={VOL_BASE_Y - b.h} width={b.w} height={b.h} fill="rgba(41,98,255,0.2)" rx="1.5" />
-          ))}
-
-          {/* X labels */}
-          {XTIMES_X.map((x, i) => (
-            <text key={x} x={x} y="213" fontSize="10" fill="rgba(255,255,255,0.22)" fontFamily="-apple-system,sans-serif" textAnchor="middle">{xLabels[i]}</text>
-          ))}
+      {/* Mini SVG chart */}
+      <div style={{ flex: 1, padding: "0 0 6px" }}>
+        <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+          {pathD && (
+            <>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"  stopColor={color} stopOpacity="0.25" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={areaD} fill={`url(#${gradId})`} />
+              <path d={pathD} stroke={color} strokeWidth="2" fill="none"
+                strokeLinecap="round" strokeLinejoin="round"
+                strokeDasharray="1000"
+                style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
+              />
+              <circle cx={last[0]} cy={last[1]} r="3" fill={color} />
+              <circle cx={last[0]} cy={last[1]} r="6" fill={color}
+                style={{ animation: "ivPulseOut 2s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }}
+              />
+            </>
+          )}
         </svg>
       </div>
     </div>
@@ -281,6 +192,7 @@ const FEATURES = [
 const CSS = `
   html, body { margin: 0; padding: 0; background: #080d18; }
   @keyframes ivDrawLine { from { stroke-dashoffset: 1200; } to { stroke-dashoffset: 0; } }
+  @keyframes ivDrawLineMini { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
   @keyframes ivPulseOut { 0%   { opacity: 0.7; transform: scale(0.5); } 100% { opacity: 0; transform: scale(2.2); } }
   @keyframes ivLiveRing { 0%   { opacity: 0.8; transform: scale(0.6); } 100% { opacity: 0; transform: scale(1.4); } }
   @keyframes ivFadeUp   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
@@ -297,7 +209,7 @@ const CSS = `
   .iv-inp:focus { border-color: rgba(59,126,255,0.6) !important; box-shadow: 0 0 0 3px rgba(41,98,255,0.14) !important; outline: none; }
   .iv-inp::placeholder { color: rgba(255,255,255,0.25); }
   .iv-sub:hover:not(:disabled) { background: #3b7eff !important; }
-  @media (max-width: 940px)  { .iv-hero { flex-direction: column !important; gap: 40px !important; padding-top: 110px !important; } .iv-text-col { flex: 0 0 auto !important; max-width: 100% !important; } .iv-chart-col { flex: 0 0 auto !important; width: 100% !important; max-width: 360px !important; margin: 0 auto !important; } .iv-h1 { font-size: 52px !important; } }
+  @media (max-width: 940px)  { .iv-hero { flex-direction: column !important; gap: 28px !important; padding-top: 110px !important; } .iv-text-col { flex: 0 0 auto !important; max-width: 100% !important; } .iv-chart-col { flex: 0 0 auto !important; width: 100% !important; max-width: 480px !important; margin: 0 auto !important; } .iv-h1 { font-size: 52px !important; } }
   @media (max-width: 680px)  { .iv-feat-grid { grid-template-columns: 1fr !important; } .iv-reviews { flex-direction: column !important; align-items: stretch !important; } .iv-stats-row { gap: 32px !important; } .iv-h1 { font-size: 40px !important; } .iv-h2 { font-size: 32px !important; } }
   @media (max-width: 480px)  { .iv-cta-h { font-size: 30px !important; } }
 `;
@@ -400,7 +312,7 @@ export default function Auth({ onAuth }) {
 
       {/* ── Hero ── */}
       <section style={{ minHeight: "100vh", display: "flex", alignItems: "center", padding: "0 36px" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", width: "100%", display: "flex", gap: 72, alignItems: "center", paddingTop: 58 }} className="iv-hero">
+        <div style={{ maxWidth: 1100, margin: "0 auto", width: "100%", display: "flex", gap: 40, alignItems: "center", paddingTop: 58 }} className="iv-hero">
 
           {/* Left: text */}
           <div style={{ flex: "0 0 55%", minWidth: 0 }} className="iv-text-col">
@@ -434,9 +346,11 @@ export default function Auth({ onAuth }) {
             </p>
           </div>
 
-          {/* Right: animated chart */}
-          <div style={{ flex: "0 0 45%", minWidth: 0 }} className="iv-chart-col">
-            <ChartPreview />
+          {/* Right: live mini charts */}
+          <div style={{ flex: "0 0 45%", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }} className="iv-chart-col">
+            <MiniChart symbol="NVDA" exchange="NASDAQ" />
+            <MiniChart symbol="GOOGL" exchange="NASDAQ" />
+            <MiniChart symbol="RACE.MI" exchange="Borsa Milano" />
           </div>
         </div>
       </section>
