@@ -53,25 +53,43 @@ export function Logo({ size = 32 }) {
 const CHART_REFRESH_MS = 5 * 60 * 1000;
 const CCY_SYMBOL = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 const MINI_VB_W = 300, MINI_VB_H = 100;
-const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 8, MINI_Y1 = 92;
+const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 8, MINI_Y1 = 88;
 
-/** Builds a compact line + area path from daily history (API returns newest → oldest) */
+/** Smooth cubic-bezier path through points (horizontal control points = no jagged spikes) */
+function smoothPath(pts) {
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const mx = (x0 + x1) / 2;
+    d += ` C${mx.toFixed(1)},${y0.toFixed(1)} ${mx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Builds a smooth line + area path from the last 30 days of history (API returns newest → oldest) */
 function buildMiniChart(history) {
-  const ordered = [...history].reverse(); // oldest -> newest
+  const ordered = (history || [])
+    .filter(d => d && Number.isFinite(d.close) && d.close > 0)
+    .slice(0, 30)
+    .reverse(); // oldest -> newest
+
   const n = ordered.length;
+  if (n < 2) return null;
+
   const closes = ordered.map(d => d.close);
   const lo = Math.min(...closes);
   const hi = Math.max(...closes);
-  const pad = (hi - lo) * 0.08 || hi * 0.02 || 1;
+  const pad = (hi - lo) * 0.1 || hi * 0.02 || 1;
   const yMin = lo - pad, yMax = hi + pad;
-  const xStep = n > 1 ? (MINI_X1 - MINI_X0) / (n - 1) : 0;
+  const xStep = (MINI_X1 - MINI_X0) / (n - 1);
 
   const pts = closes.map((c, i) => [
     MINI_X0 + i * xStep,
     MINI_Y1 - ((c - yMin) / (yMax - yMin)) * (MINI_Y1 - MINI_Y0),
   ]);
 
-  const pathD = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const pathD = smoothPath(pts);
   const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${MINI_Y1} L${pts[0][0].toFixed(1)},${MINI_Y1} Z`;
 
   return { pathD, areaD, last: pts[n - 1] };
@@ -89,9 +107,8 @@ function MiniChart({ symbol, exchange }) {
       if (cancelled) return;
       const quote   = Array.isArray(q) ? q[0] : q;
       const history = Array.isArray(h) ? h : [];
-      if (quote?.price && history.length > 1) {
-        setLive({ quote, geo: buildMiniChart(history) });
-      }
+      const geo = quote?.price ? buildMiniChart(history) : null;
+      if (geo) setLive({ quote, geo });
     }
     load();
     const t = setInterval(load, CHART_REFRESH_MS);
@@ -102,51 +119,56 @@ function MiniChart({ symbol, exchange }) {
   const up     = (quote?.change ?? 0) >= 0;
   const color  = up ? "#00c853" : "#ff3b30";
   const ccy    = CCY_SYMBOL[quote?.currency] || "$";
-  const { pathD, areaD, last } = live?.geo || {};
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, overflow: "hidden", height: 140, boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 110, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "14px 16px" }}>
       {/* Ticker header */}
-      <div style={{ padding: "10px 16px 4px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em" }}>{exchange}</span>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "white", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-            {quote ? `${ccy}${quote.price.toFixed(2)}` : "···"}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
+        {live ? (
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "white", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              {ccy}{quote.price.toFixed(2)}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color, marginTop: 2 }}>
+              {up ? "+" : ""}{(quote.changePercentage ?? 0).toFixed(2)}%
+            </div>
           </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: quote ? color : "rgba(255,255,255,0.3)", marginTop: 2 }}>
-            {quote ? `${up ? "+" : ""}${(quote.changePercentage ?? 0).toFixed(2)}%` : "—"}
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <div className="iv-skel" style={{ width: 54, height: 14, borderRadius: 4 }} />
+            <div className="iv-skel" style={{ width: 36, height: 10, borderRadius: 4 }} />
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Mini SVG chart */}
-      <div style={{ flex: 1, padding: "0 0 6px" }}>
-        <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
-          {pathD && (
-            <>
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"  stopColor={color} stopOpacity="0.25" />
-                  <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={areaD} fill={`url(#${gradId})`} />
-              <path d={pathD} stroke={color} strokeWidth="2" fill="none"
-                strokeLinecap="round" strokeLinejoin="round"
-                strokeDasharray="1000"
-                style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
-              />
-              <circle cx={last[0]} cy={last[1]} r="3" fill={color} />
-              <circle cx={last[0]} cy={last[1]} r="6" fill={color}
-                style={{ animation: "ivPulseOut 2s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }}
-              />
-            </>
-          )}
-        </svg>
+      {/* Exchange name */}
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em", marginTop: 2, marginBottom: 6 }}>
+        {exchange}
+      </div>
+
+      {/* Mini SVG chart — bleeds to card edges, fills remaining height */}
+      <div style={{ flex: 1, minHeight: 0, margin: "0 -16px -14px" }}>
+        {live ? (
+          <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"  stopColor={color} stopOpacity="0.18" />
+                <stop offset="100%" stopColor={color} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={live.geo.areaD} fill={`url(#${gradId})`} />
+            <path d={live.geo.pathD} stroke={color} strokeWidth="2" fill="none"
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+              strokeDasharray="1000"
+              style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
+            />
+            <circle cx={live.geo.last[0]} cy={live.geo.last[1]} r="2.5" fill={color} />
+          </svg>
+        ) : (
+          <div className="iv-skel" style={{ width: "100%", height: "100%" }} />
+        )}
       </div>
     </div>
   );
@@ -196,6 +218,8 @@ const CSS = `
   @keyframes ivPulseOut { 0%   { opacity: 0.7; transform: scale(0.5); } 100% { opacity: 0; transform: scale(2.2); } }
   @keyframes ivLiveRing { 0%   { opacity: 0.8; transform: scale(0.6); } 100% { opacity: 0; transform: scale(1.4); } }
   @keyframes ivFadeUp   { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ivSkeleton { 0% { opacity: 0.35; } 50% { opacity: 0.75; } 100% { opacity: 0.35; } }
+  .iv-skel  { background: rgba(255,255,255,0.08); animation: ivSkeleton 1.4s ease-in-out infinite; }
   .iv-page  { animation: ivFadeUp 0.5s cubic-bezier(.22,1,.36,1); }
   .iv-live-ring { animation: ivLiveRing 2s ease-out infinite; transform-box: fill-box; transform-origin: center; }
   .iv-feat  { transition: border-color 0.2s, box-shadow 0.2s, transform 0.22s; }
