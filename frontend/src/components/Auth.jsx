@@ -73,7 +73,7 @@ function formatDDMMYY(dateStr) {
   return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "";
 }
 
-/** Builds a smooth line + area path from 3 years of history (API returns newest → oldest) */
+/** Builds a smooth line + area path from 1 year of history (API returns newest → oldest) */
 function buildMiniChart(history, symbol) {
   const ordered = (history || [])
     .filter(d => d && Number.isFinite(d.close) && d.close > 0)
@@ -101,12 +101,12 @@ function buildMiniChart(history, symbol) {
   const changePct = ((closes[n - 1] - closes[0]) / closes[0]) * 100;
 
   // eslint-disable-next-line no-console
-  console.log(`[MiniChart ${symbol}] dati reali 3 anni (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}), var ${changePct.toFixed(2)}%`, ordered);
+  console.log(`[MiniChart ${symbol}] dati reali 1 anno (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}), var ${changePct.toFixed(2)}%`, ordered);
 
   return { pathD, areaD, hi, lo, changePct, dateFrom: ordered[0].date, dateTo: ordered[n - 1].date };
 }
 
-/** Compact live ticker card: symbol, 3y change% and a long-term trend chart */
+/** Compact live ticker card: symbol, 1y change% and a long-term trend chart */
 function MiniChart({ symbol, exchange }) {
   const [live, setLive] = useState(null);
 
@@ -114,7 +114,7 @@ function MiniChart({ symbol, exchange }) {
     let cancelled = false;
     async function load() {
       const fromDate = new Date();
-      fromDate.setFullYear(fromDate.getFullYear() - 3);
+      fromDate.setFullYear(fromDate.getFullYear() - 1);
       const from = fromDate.toISOString().split("T")[0];
       const [q, h] = await Promise.all([apiGet(`/quote/${symbol}`), apiGet(`/history/${symbol}?from=${from}`)]);
       if (cancelled) return;
@@ -138,7 +138,7 @@ function MiniChart({ symbol, exchange }) {
   const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(11,18,32,0.55)", padding: "1px 4px", borderRadius: 3, pointerEvents: "none" };
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 190, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
       {/* Ticker header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ fontSize: 14, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
@@ -164,8 +164,8 @@ function MiniChart({ symbol, exchange }) {
         {exchange}
       </div>
 
-      {/* 3-year trend chart — main visual focus of the card */}
-      <div style={{ height: 160, position: "relative" }}>
+      {/* 1-year trend chart — main visual focus of the card */}
+      <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
         {live ? (
           <>
             <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
@@ -390,7 +390,7 @@ export default function Auth({ onAuth }) {
           </div>
 
           {/* Right: live mini charts */}
-          <div style={{ flex: "0 0 45%", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }} className="iv-chart-col">
+          <div style={{ flex: "0 0 45%", minWidth: 0, display: "flex", flexDirection: "column", gap: 8, maxHeight: "100vh", overflowY: "auto" }} className="iv-chart-col">
             <MiniChart symbol="NVDA" exchange="NASDAQ" />
             <MiniChart symbol="GOOGL" exchange="NASDAQ" />
             <MiniChart symbol="RACE.MI" exchange="Borsa Milano" />
