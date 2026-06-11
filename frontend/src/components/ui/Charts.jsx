@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { createChart, CandlestickSeries, HistogramSeries, LineSeries } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, LineSeries, LineStyle } from "lightweight-charts";
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend, LabelList,
@@ -9,7 +9,7 @@ import { fmt } from "../../api.js";
 const PIE_COLORS = ["#0071e3","#34c759","#ff9f0a","#ff3b30","#8b5cf6","#06b6d4","#f59e0b","#10b981"];
 
 /* ─── Candlestick Chart (lightweight-charts v5) ──────────────────────────── */
-export function CandlestickChart({ data, dark }) {
+export function CandlestickChart({ data, dark, supports = [], resistances = [], trendLine }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -61,6 +61,32 @@ export function CandlestickChart({ data, dark }) {
             color: d.close >= (d.open ?? d.close) ? "rgba(52,199,89,.35)" : "rgba(255,59,48,.35)",
           })));
         }
+
+        // Support / resistance levels — dashed horizontal lines with price labels
+        supports.forEach(s => {
+          c.createPriceLine({
+            price: s.price, color: "#34c759", lineWidth: 1, lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true, title: `S ${s.price}`,
+          });
+        });
+        resistances.forEach(r => {
+          c.createPriceLine({
+            price: r.price, color: "#ff3b30", lineWidth: 1, lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true, title: `R ${r.price}`,
+          });
+        });
+
+        // Short/medium-term trend line (linear regression over the last ~30 trading days)
+        if (trendLine?.from && trendLine?.to) {
+          const trend = chart.addSeries(LineSeries, {
+            color: "#0071e3", lineWidth: 1, lineStyle: LineStyle.Dashed,
+            lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+          });
+          trend.setData([
+            { time: trendLine.from.date, value: trendLine.from.price },
+            { time: trendLine.to.date,   value: trendLine.to.price },
+          ]);
+        }
       } else {
         const line = chart.addSeries(LineSeries, { color: "#0071e3", lineWidth: 2 });
         line.setData(sorted.map(d => ({ time: d.date, value: d.close ?? d.adjClose ?? 0 })));
@@ -74,7 +100,7 @@ export function CandlestickChart({ data, dark }) {
     const ro = new ResizeObserver(() => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); });
     ro.observe(ref.current);
     return () => { try { chart.remove(); } catch {} ro.disconnect(); };
-  }, [data, dark]);
+  }, [data, dark, supports, resistances, trendLine]);
 
   return <div ref={ref} style={{ width: "100%", minHeight: 340 }} />;
 }

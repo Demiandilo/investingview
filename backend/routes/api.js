@@ -133,6 +133,96 @@ function computeRSI(closes, period = 14) {
   return +(100 - 100 / (1 + avgGain / avgLoss)).toFixed(2);
 }
 
+// ─── Technical analysis helpers (support/resistance, trend, patterns) ─────
+
+/** Local pivot highs/lows: a candle whose high/low is the extreme within `window` candles on each side */
+function findPivots(candles, window = 3) {
+  const highs = [], lows = [];
+  for (let i = window; i < candles.length - window; i++) {
+    const slice = candles.slice(i - window, i + window + 1);
+    const h = candles[i].high, l = candles[i].low;
+    if (h === Math.max(...slice.map(c => c.high))) highs.push({ index: i, date: candles[i].date, price: h });
+    if (l === Math.min(...slice.map(c => c.low))) lows.push({ index: i, date: candles[i].date, price: l });
+  }
+  return { highs, lows };
+}
+
+/** Groups pivot prices within `tolerance` (relative) into levels touched at least twice */
+function groupLevels(pivots, tolerance = 0.015) {
+  const groups = [];
+  for (const p of pivots) {
+    const g = groups.find(g => Math.abs(p.price - g.avg) / g.avg <= tolerance);
+    if (g) { g.touches.push(p); g.avg = g.touches.reduce((s, t) => s + t.price, 0) / g.touches.length; }
+    else groups.push({ avg: p.price, touches: [p] });
+  }
+  return groups.filter(g => g.touches.length >= 2);
+}
+
+/** Least-squares linear regression: y = slope*x + intercept */
+function linearRegression(values) {
+  const n = values.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) { sumX += i; sumY += values[i]; sumXY += i * values[i]; sumXX += i * i; }
+  const denom = n * sumXX - sumX * sumX;
+  const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+  return { slope, intercept: (sumY - slope * sumX) / n };
+}
+
+/** Double top / double bottom: last two similar pivots with an opposite extreme between them */
+function detectDoubleTopBottom(highs, lows) {
+  if (highs.length >= 2) {
+    const [a, b] = highs.slice(-2);
+    const avg = (a.price + b.price) / 2;
+    if (Math.abs(a.price - b.price) / avg <= 0.025) {
+      const between = lows.filter(l => l.index > a.index && l.index < b.index);
+      if (between.length) {
+        const neckline = Math.min(...between.map(l => l.price));
+        if ((avg - neckline) / avg >= 0.03) return { type: 'double_top', level: avg, neckline };
+      }
+    }
+  }
+  if (lows.length >= 2) {
+    const [a, b] = lows.slice(-2);
+    const avg = (a.price + b.price) / 2;
+    if (Math.abs(a.price - b.price) / avg <= 0.025) {
+      const between = highs.filter(h => h.index > a.index && h.index < b.index);
+      if (between.length) {
+        const neckline = Math.max(...between.map(h => h.price));
+        if ((neckline - avg) / avg >= 0.03) return { type: 'double_bottom', level: avg, neckline };
+      }
+    }
+  }
+  return null;
+}
+
+/** Head & shoulders: middle pivot high notably higher than two similar surrounding highs, with a roughly flat neckline */
+function detectHeadShoulders(highs, lows) {
+  if (highs.length < 3 || lows.length < 2) return null;
+  const [left, head, right] = highs.slice(-3);
+  if (!(head.price > left.price && head.price > right.price)) return null;
+  if (Math.abs(left.price - right.price) / ((left.price + right.price) / 2) > 0.04) return null;
+  if ((head.price - left.price) / left.price < 0.02) return null;
+  const neck1 = lows.filter(l => l.index > left.index && l.index < head.index);
+  const neck2 = lows.filter(l => l.index > head.index && l.index < right.index);
+  if (!neck1.length || !neck2.length) return null;
+  const n1 = Math.min(...neck1.map(l => l.price));
+  const n2 = Math.min(...neck2.map(l => l.price));
+  if (Math.abs(n1 - n2) / ((n1 + n2) / 2) > 0.04) return null;
+  return { type: 'head_shoulders', leftShoulder: left.price, head: head.price, rightShoulder: right.price, neckline: (n1 + n2) / 2 };
+}
+
+/** Symmetrical/converging triangle: last 3 pivot highs descending and last 3 pivot lows ascending */
+function detectTriangle(highs, lows) {
+  if (highs.length < 3 || lows.length < 3) return null;
+  const h = highs.slice(-3), l = lows.slice(-3);
+  const highsDescending = h[0].price > h[1].price && h[1].price > h[2].price;
+  const lowsAscending = l[0].price < l[1].price && l[1].price < l[2].price;
+  if (highsDescending && lowsAscending) {
+    return { type: 'triangle', resistanceFrom: h[0].price, resistanceTo: h[2].price, supportFrom: l[0].price, supportTo: l[2].price };
+  }
+  return null;
+}
+
 // ─── Yahoo Finance fallback for fundamental ratios ─────────────────────────
 async function yahooRatios(symbol) {
   const [sumRes, ksRes, fdRes] = await Promise.allSettled([
@@ -966,6 +1056,67 @@ router.get('/rsi/:symbol', async (req, res) => {
       const rsi = computeRSI(closes);
       return { symbol, rsi };
     }, 300); // 5-min TTL
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Technical Analysis: support/resistance, trend line, basic patterns ──────
+router.get('/technical-analysis/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const data = await cached(`techan_${symbol}`, async () => {
+      const from = new Date(Date.now() - 185 * 86400000).toISOString().split('T')[0];
+      const history = await yahooHistory(symbol, from, null).catch(() => []);
+      const candles = [...history].reverse() // oldest -> newest
+        .filter(c => c.high != null && c.low != null && c.close != null);
+
+      if (candles.length < 20) {
+        return { symbol, currentPrice: null, trend: null, trendLine: null, supports: [], resistances: [], pattern: null };
+      }
+
+      const currentPrice = candles[candles.length - 1].close;
+
+      const { highs, lows } = findPivots(candles, 3);
+      const levels = groupLevels([...highs, ...lows], 0.015);
+
+      const supports = levels.filter(g => g.avg < currentPrice)
+        .sort((a, b) => b.avg - a.avg).slice(0, 3)
+        .map(g => ({ price: +g.avg.toFixed(2), touches: g.touches.length }));
+
+      const resistances = levels.filter(g => g.avg > currentPrice)
+        .sort((a, b) => a.avg - b.avg).slice(0, 3)
+        .map(g => ({ price: +g.avg.toFixed(2), touches: g.touches.length }));
+
+      // Trend over the last 30 trading days: linear regression slope -> direction
+      const trendWindow = candles.slice(-30);
+      const closes = trendWindow.map(c => c.close);
+      const { slope, intercept } = linearRegression(closes);
+      const startVal = intercept;
+      const endVal = slope * (closes.length - 1) + intercept;
+      const avgVal = closes.reduce((s, v) => s + v, 0) / closes.length;
+      const changePercent = avgVal ? +(((endVal - startVal) / avgVal) * 100).toFixed(2) : 0;
+      const direction = Math.abs(changePercent) < 3 ? 'sideways' : (changePercent > 0 ? 'bullish' : 'bearish');
+      const trendLine = {
+        from: { date: trendWindow[0].date, price: +startVal.toFixed(2) },
+        to:   { date: trendWindow[trendWindow.length - 1].date, price: +endVal.toFixed(2) },
+      };
+
+      let pattern = detectDoubleTopBottom(highs, lows) || detectHeadShoulders(highs, lows) || detectTriangle(highs, lows);
+      if (pattern) {
+        pattern = { ...pattern };
+        for (const k of Object.keys(pattern)) { if (typeof pattern[k] === 'number') pattern[k] = +pattern[k].toFixed(2); }
+      }
+
+      return {
+        symbol,
+        currentPrice: +currentPrice.toFixed(2),
+        trend: { direction, changePercent },
+        trendLine,
+        supports,
+        resistances,
+        pattern,
+      };
+    }, 1800); // 30-min TTL
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -58,6 +58,7 @@ export const API = {
     const d = await cachedGet(`/candles/${sym}?from=${from}&to=${to}`, 3_600_000);
     return Array.isArray(d) ? d : [];
   },
+  async getTechnicalAnalysis(sym) { return await cachedGet(`/technical-analysis/${sym}`, 1_800_000); },
 
   async getSectors()    { return await cachedGet("/sectors?v=2",   300_000) || []; },
   async getIndexes()    { return await cachedGet("/indexes",       60_000) || []; },

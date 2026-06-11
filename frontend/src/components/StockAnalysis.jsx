@@ -301,6 +301,7 @@ function TecnicaTab({ symbol, q, hist, dark }) {
   const [cPeriod, setCPeriod] = useState(2);
   const [candles, setCandles] = useState([]);
   const [candleLoading, setCandleLoading] = useState(false);
+  const [ta, setTa] = useState(null);
 
   useEffect(() => {
     if (!symbol) return;
@@ -309,6 +310,12 @@ function TecnicaTab({ symbol, q, hist, dark }) {
     const to = new Date().toISOString().split("T")[0];
     API.getCandles(symbol, from, to).then(d => { setCandles(d); setCandleLoading(false); }).catch(() => setCandleLoading(false));
   }, [symbol, cPeriod]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    setTa(null);
+    API.getTechnicalAnalysis(symbol).then(setTa).catch(() => setTa(null));
+  }, [symbol]);
 
   // RSI from last 30 close prices (calculated from history)
   const rsi = useMemo(() => {
@@ -352,11 +359,107 @@ function TecnicaTab({ symbol, q, hist, dark }) {
           </div>
         </div>
         {candleLoading ? <div className="skeleton" style={{ height: 340 }} />
-          : candles.length > 0 ? <CandlestickChart data={candles} dark={dark} />
+          : candles.length > 0 ? <CandlestickChart data={candles} dark={dark} supports={ta?.supports} resistances={ta?.resistances} trendLine={ta?.trendLine} />
           : (hist?.length ?? 0) > 1 ? <HistoricalChart history={hist} />
           : <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text3)", fontSize: 14 }}>{t("analysis.candle.noData")}</div>
         }
       </div>
+      <AnalisiGraficaCard ta={ta} q={q} />
+    </div>
+  );
+}
+
+/* ─── Analisi Grafica Card (support/resistance, trend, pattern) ─────────────── */
+const TREND_ICONS = {
+  bullish: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+  bearish: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>,
+  sideways: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><polyline points="16 6 22 12 16 18"/></svg>,
+};
+const TREND_COLORS = { bullish: "var(--green)", bearish: "var(--red)", sideways: "#ff9f0a" };
+const APPROACH_THRESHOLD = 3; // % distance below which a level is considered "approaching"
+
+function AnalisiGraficaCard({ ta, q }) {
+  const { t } = useLang();
+  if (!ta || !ta.trend) return null;
+
+  const { trend, supports = [], resistances = [], pattern } = ta;
+  const price = ta.currentPrice ?? q?.price;
+  const ccy = q?.currency;
+
+  const nearestSupport = supports[0];
+  const nearestResistance = resistances[0];
+  const distSupport = nearestSupport && price ? ((price - nearestSupport.price) / price) * 100 : null;
+  const distResistance = nearestResistance && price ? ((nearestResistance.price - price) / price) * 100 : null;
+
+  let explanation = null;
+  if (distResistance != null && (distSupport == null || distResistance <= distSupport) && distResistance <= APPROACH_THRESHOLD) {
+    explanation = t("analysis.technical.explainResistance", { price: fmtPrice(nearestResistance.price, ccy) });
+  } else if (distSupport != null && distSupport <= APPROACH_THRESHOLD) {
+    explanation = t("analysis.technical.explainSupport", { price: fmtPrice(nearestSupport.price, ccy) });
+  } else if (nearestSupport && nearestResistance) {
+    explanation = t("analysis.technical.explainNeutral", { support: fmtPrice(nearestSupport.price, ccy), resistance: fmtPrice(nearestResistance.price, ccy) });
+  }
+
+  const patternInfo = pattern ? {
+    label: t(`analysis.technical.patterns.${pattern.type}`),
+    desc: t(`analysis.technical.patternDesc.${pattern.type}`, {
+      level: fmtPrice(pattern.level, ccy), neckline: fmtPrice(pattern.neckline, ccy),
+      head: fmtPrice(pattern.head, ccy), leftShoulder: fmtPrice(pattern.leftShoulder, ccy), rightShoulder: fmtPrice(pattern.rightShoulder, ccy),
+    }),
+  } : null;
+
+  const tileLabel = { fontSize: 11, color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 };
+
+  return (
+    <div className="card" style={{ padding: "22px 24px", marginTop: 16 }}>
+      <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>{t("analysis.technical.title")}</p>
+      <div className="stagger" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 12, marginBottom: 16 }}>
+        <div>
+          <p style={tileLabel}>{t("analysis.technical.trend")}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 800, color: TREND_COLORS[trend.direction] }}>
+            {TREND_ICONS[trend.direction]} {t(`analysis.technical.${trend.direction}`)}
+          </div>
+        </div>
+        <div>
+          <p style={tileLabel}>{t("analysis.technical.nearestSupport")}</p>
+          {nearestSupport ? (
+            <>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>{fmtPrice(nearestSupport.price, ccy)}</div>
+              <div style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>-{distSupport.toFixed(2)}%</div>
+            </>
+          ) : <div style={{ fontSize: 13, color: "var(--text3)" }}>{t("analysis.technical.noLevels")}</div>}
+        </div>
+        <div>
+          <p style={tileLabel}>{t("analysis.technical.nearestResistance")}</p>
+          {nearestResistance ? (
+            <>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>{fmtPrice(nearestResistance.price, ccy)}</div>
+              <div style={{ fontSize: 12, color: "var(--red)", fontWeight: 600 }}>+{distResistance.toFixed(2)}%</div>
+            </>
+          ) : <div style={{ fontSize: 13, color: "var(--text3)" }}>{t("analysis.technical.noLevels")}</div>}
+        </div>
+        {patternInfo && (
+          <div>
+            <p style={tileLabel}>{t("analysis.technical.pattern")}</p>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "var(--blue)" }}>{patternInfo.label}</div>
+          </div>
+        )}
+      </div>
+
+      {patternInfo && (
+        <div style={{ padding: "12px 16px", background: "var(--surface2)", borderRadius: 10, fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginBottom: explanation ? 10 : 0 }}>
+          {patternInfo.desc}
+        </div>
+      )}
+
+      {explanation && (
+        <div style={{ padding: "14px 18px", background: "var(--surface2)", borderRadius: 12, borderLeft: "3px solid var(--blue)", display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <span style={{ flexShrink: 0, lineHeight: 1 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21h6m-3-3v-6"/><path d="M17 7A7 7 0 1 0 7 7c0 3.5 2 5.5 3.5 7h3C15 12.5 17 10.5 17 7z"/></svg>
+          </span>
+          <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.7 }}>{explanation}</p>
+        </div>
+      )}
     </div>
   );
 }
