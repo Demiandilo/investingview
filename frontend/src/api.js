@@ -26,8 +26,8 @@ async function post(path, body) {
 }
 
 // Treat as ticker only if original input is already uppercase (no lowercase = user typed a ticker).
-// Supports international: AAPL, BRK.A, ISP.MI, 600519.SS (up to 12 chars).
-export const looksLikeTicker = s => /^[A-Z0-9.\-]{1,12}$/.test(s.trim());
+// Supports international: AAPL, BRK.A, ISP.MI, 600519.SS (up to 12 chars), and indices: ^IXIC, ^GSPC.
+export const looksLikeTicker = s => /^\^?[A-Z0-9.\-]{1,12}$/.test(s.trim());
 
 export const API = {
   get, post,

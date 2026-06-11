@@ -300,9 +300,10 @@ const COMMODITY_DICT = {
   'coffee':        { symbol: 'KC=F',    name: 'Caffè (Coffee Futures)',                exchange: 'ICE',    type: 'futures' },
 };
 
-/** Returns true for futures (XX=F), crypto (*-USD), known commodity ETFs */
+/** Returns true for futures (XX=F), crypto (*-USD), known commodity ETFs, and market indices (^XXX) */
 function isCommoditySymbol(sym) {
   if (!sym) return false;
+  if (sym.startsWith('^')) return true;
   if (/^[A-Z]{1,4}=F$/.test(sym)) return true;
   if (/^[A-Z]+-USD$/.test(sym)) return true;
   return ['GLD','SLV','USO','UNG','WEAT','CPER','IAU','PDBC'].includes(sym);
@@ -512,10 +513,11 @@ router.get('/profile/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const data = await cached(`profile_${symbol}`, async () => {
-      // For commodity futures/crypto, assetProfile is empty — use quote only
+      // For commodity futures/crypto/indices, assetProfile is empty — use quote only
       if (isCommoditySymbol(symbol)) {
         const q = await yf.quote(symbol).catch(() => null);
         if (!q?.regularMarketPrice) return [];
+        const isIndex = symbol.startsWith('^');
         const isCrypto = /^[A-Z]+-USD$/.test(symbol);
         const isFuture = /^[A-Z]{1,4}=F$/.test(symbol);
         return [{
@@ -530,7 +532,7 @@ router.get('/profile/:symbol', async (req, res) => {
           range:            q.fiftyTwoWeekLow && q.fiftyTwoWeekHigh
                               ? `${q.fiftyTwoWeekLow}-${q.fiftyTwoWeekHigh}` : undefined,
           _isCommodity:     true,
-          _commodityType:   isCrypto ? 'crypto' : isFuture ? 'futures' : 'etf',
+          _commodityType:   isIndex ? 'index' : isCrypto ? 'crypto' : isFuture ? 'futures' : 'etf',
         }];
       }
 

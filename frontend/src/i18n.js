@@ -265,7 +265,8 @@ const T = {
       commodity: {
         notice: "Questo è un {label}",
         noticeDesc: "I fondamentali aziendali (P/E, ROE, EPS, Dividendi, ecc.) non si applicano a questo strumento. Il prezzo è determinato da domanda/offerta di mercato, fattori macroeconomici e stagionali, non dai risultati finanziari di un'azienda.",
-        labels: { crypto: "criptovaluta", futures: "contratto futures", etf: "ETF commodity" },
+        indexNoticeDesc: "Questo è un indice di mercato: rappresenta la performance aggregata di un paniere di azioni, non di una singola azienda. I fondamentali aziendali (P/E, ROE, EPS, Dividendi, ecc.) non si applicano a questo strumento.",
+        labels: { crypto: "criptovaluta", futures: "contratto futures", etf: "ETF commodity", index: "indice di mercato" },
       },
     },
     screener: {
@@ -667,7 +668,8 @@ const T = {
       commodity: {
         notice: "This is a {label}",
         noticeDesc: "Company fundamentals (P/E, ROE, EPS, Dividends, etc.) do not apply to this instrument. The price is determined by market supply/demand, macroeconomic and seasonal factors, not by a company's financial results.",
-        labels: { crypto: "cryptocurrency", futures: "futures contract", etf: "commodity ETF" },
+        indexNoticeDesc: "This is a market index: it represents the aggregate performance of a basket of stocks, not a single company. Company fundamentals (P/E, ROE, EPS, Dividends, etc.) do not apply to this instrument.",
+        labels: { crypto: "cryptocurrency", futures: "futures contract", etf: "commodity ETF", index: "market index" },
       },
     },
     screener: {

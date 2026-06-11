@@ -47,12 +47,14 @@ function timeAgo(dateStr, lang) {
 
 function isCommodity(sym) {
   if (!sym) return false;
+  if (sym.startsWith('^')) return true;          // market indices: ^IXIC, ^GSPC, ^GDAXI, etc.
   if (/^[A-Z]{1,4}=F$/.test(sym)) return true;   // futures: GC=F, CL=F, etc.
   if (/^[A-Z]+-USD$/.test(sym)) return true;      // crypto: BTC-USD, ETH-USD
   return ['GLD','SLV','USO','UNG','WEAT','CPER','IAU','PDBC'].includes(sym);
 }
 
 function commodityLabelKey(sym) {
+  if (sym.startsWith('^')) return 'index';
   if (/^[A-Z]+-USD$/.test(sym)) return 'crypto';
   if (/^[A-Z]{1,4}=F$/.test(sym)) return 'futures';
   return 'etf';
@@ -1109,7 +1111,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
                     {t("analysis.commodity.notice", { label: commodity.labels[commodityLabelKey(inp)] })}
                   </p>
                   <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6 }}>
-                    {commodity.noticeDesc}
+                    {commodityLabelKey(inp) === 'index' ? commodity.indexNoticeDesc : commodity.noticeDesc}
                   </p>
                 </div>
               </div>
