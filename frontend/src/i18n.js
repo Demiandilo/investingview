@@ -197,6 +197,8 @@ const T = {
       },
       financials: {
         section: "Andamento Finanziario",
+        annual: "Annuale",
+        quarterly: "Trimestrale",
         revenue: "Fatturato",
         netIncome: "Utile Netto",
         netMargin: "Margine Netto %",
@@ -597,6 +599,8 @@ const T = {
       },
       financials: {
         section: "Financial History",
+        annual: "Annual",
+        quarterly: "Quarterly",
         revenue: "Revenue",
         netIncome: "Net Income",
         netMargin: "Net Margin %",

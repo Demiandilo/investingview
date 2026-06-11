@@ -1544,55 +1544,75 @@ router.get('/earnings/:symbol', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Income Statement History (Revenue & Net Income, last 4-5 years) ─────────
+/** Calendar-quarter label for a period end date, e.g. "Q1 2026" */
+function quarterLabel(dateStr) {
+  const d = new Date(dateStr);
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `Q${q} ${d.getUTCFullYear()}`;
+}
+
+/** Builds period rows (oldest→newest input) with net margin and YoY changes vs `yoyLag` periods back */
+function buildFinancialPeriods(rows, yoyLag) {
+  return rows.map((p, i) => {
+    const prev = rows[i - yoyLag];
+    const netMargin    = p.revenue ? +((p.netIncome / p.revenue) * 100).toFixed(2) : null;
+    const yoyRevenue   = prev?.revenue   ? +(((p.revenue - prev.revenue) / Math.abs(prev.revenue)) * 100).toFixed(2) : null;
+    const yoyNetIncome = prev?.netIncome ? +(((p.netIncome - prev.netIncome) / Math.abs(prev.netIncome)) * 100).toFixed(2) : null;
+    return { period: p.period, revenue: p.revenue, netIncome: p.netIncome, netMargin, yoyRevenue, yoyNetIncome };
+  }).reverse(); // most recent first
+}
+
+// ─── Income Statement History (Revenue & Net Income, annual + quarterly) ─────
 router.get('/income-statement/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const data = await cachedLong(`incomestmt_${symbol}`, async () => {
-      const [stmtRes, priceRes] = await Promise.allSettled([
+      const [annualRes, quarterlyRes, priceRes] = await Promise.allSettled([
         yf.quoteSummary(symbol, { modules: ['incomeStatementHistory'] }),
+        yf.quoteSummary(symbol, { modules: ['incomeStatementHistoryQuarterly'] }),
         yf.quoteSummary(symbol, { modules: ['price'] }),
       ]);
       const currency = priceRes.status === 'fulfilled' ? (priceRes.value.price?.currency ?? null) : null;
-      const history = stmtRes.status === 'fulfilled'
-        ? (stmtRes.value.incomeStatementHistory?.incomeStatementHistory || [])
-        : [];
+      const annualHistory = annualRes.status === 'fulfilled'
+        ? (annualRes.value.incomeStatementHistory?.incomeStatementHistory || []) : [];
+      const quarterlyHistory = quarterlyRes.status === 'fulfilled'
+        ? (quarterlyRes.value.incomeStatementHistoryQuarterly?.incomeStatementHistory || []) : [];
 
-      let rows = history
+      let annualRows = annualHistory
         .filter(p => p.totalRevenue != null && p.netIncome != null && p.endDate)
-        .map(p => ({
-          period:    new Date(p.endDate).getFullYear().toString(),
-          revenue:   p.totalRevenue,
-          netIncome: p.netIncome,
-        }));
+        .map(p => ({ period: new Date(p.endDate).getFullYear().toString(), revenue: p.totalRevenue, netIncome: p.netIncome, sortKey: new Date(p.endDate).getTime() }));
+
+      let quarterlyRows = quarterlyHistory
+        .filter(p => p.totalRevenue != null && p.netIncome != null && p.endDate)
+        .map(p => ({ period: quarterLabel(p.endDate), revenue: p.totalRevenue, netIncome: p.netIncome, sortKey: new Date(p.endDate).getTime() }));
 
       // FMP fallback if Yahoo gave nothing usable
-      if (!rows.length) {
+      if (!annualRows.length) {
         const fmpData = await fmp('/income-statement', { symbol, limit: 5 }).catch(() => null);
         if (Array.isArray(fmpData)) {
-          rows = fmpData
-            .filter(p => p.revenue != null && p.netIncome != null)
-            .map(p => ({
-              period:    (p.calendarYear || p.date || '').toString().slice(0, 4),
-              revenue:   p.revenue,
-              netIncome: p.netIncome,
-            }))
+          annualRows = fmpData
+            .filter(p => p.revenue != null && p.netIncome != null && p.date)
+            .map(p => ({ period: (p.calendarYear || p.date || '').toString().slice(0, 4), revenue: p.revenue, netIncome: p.netIncome, sortKey: new Date(p.date).getTime() }))
             .filter(p => p.period);
         }
       }
+      if (!quarterlyRows.length) {
+        const fmpData = await fmp('/income-statement', { symbol, period: 'quarter', limit: 8 }).catch(() => null);
+        if (Array.isArray(fmpData)) {
+          quarterlyRows = fmpData
+            .filter(p => p.revenue != null && p.netIncome != null && p.date)
+            .map(p => ({ period: quarterLabel(p.date), revenue: p.revenue, netIncome: p.netIncome, sortKey: new Date(p.date).getTime() }));
+        }
+      }
 
-      // Oldest → newest so YoY can be computed against the prior period
-      rows.sort((a, b) => a.period.localeCompare(b.period));
-      rows = rows.slice(-5);
-      const periods = rows.map((p, i) => {
-        const prev = rows[i - 1];
-        const netMargin    = p.revenue ? +((p.netIncome / p.revenue) * 100).toFixed(2) : null;
-        const yoyRevenue   = prev?.revenue   ? +(((p.revenue - prev.revenue) / Math.abs(prev.revenue)) * 100).toFixed(2) : null;
-        const yoyNetIncome = prev?.netIncome ? +(((p.netIncome - prev.netIncome) / Math.abs(prev.netIncome)) * 100).toFixed(2) : null;
-        return { period: p.period, revenue: p.revenue, netIncome: p.netIncome, netMargin, yoyRevenue, yoyNetIncome };
-      }).reverse(); // most recent first
+      // Oldest → newest so YoY can be computed against the prior period(s)
+      annualRows.sort((a, b) => a.sortKey - b.sortKey);
+      quarterlyRows.sort((a, b) => a.sortKey - b.sortKey);
 
-      return { symbol, currency, periods };
+      const periods   = buildFinancialPeriods(annualRows.slice(-5), 1);
+      const quarterly = buildFinancialPeriods(quarterlyRows.slice(-8), 4);
+
+      return { symbol, currency, periods, quarterly };
     });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

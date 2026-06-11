@@ -635,11 +635,13 @@ function EarningsSection({ earnings }) {
 /* ─── Financial History Section (Revenue & Net Income) ───────────────────── */
 function FinancialHistorySection({ financials }) {
   const { t } = useLang();
+  const [view, setView] = useState("annual");
   const fin = t("analysis.financials");
-  const periods = financials?.periods;
   const currency = financials?.currency;
+  const annual = financials?.periods || [];
+  const quarterly = financials?.quarterly || [];
 
-  if (!periods || periods.length === 0) {
+  if (annual.length === 0 && quarterly.length === 0) {
     return (
       <div style={{ marginBottom: 20 }}>
         <p className="section-label">{fin.section}</p>
@@ -650,44 +652,71 @@ function FinancialHistorySection({ financials }) {
     );
   }
 
+  const periods = view === "quarterly" ? quarterly : annual;
+
   return (
     <div style={{ marginBottom: 20 }}>
-      <p className="section-label">{fin.section}</p>
-      <div className="card" style={{ padding: "20px 24px" }}>
-        <FinancialHistoryChart periods={periods} currency={currency} labels={{ revenue: fin.revenue, netIncome: fin.netIncome }} />
-        <div style={{ overflowX: "auto", marginTop: 16 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border2)" }}>
-                <th style={{ textAlign: "left", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.period}</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.revenue}</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netIncome}</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netMargin}</th>
-                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.yoyChange}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {periods.map((p, i) => (
-                <tr key={i} style={{ borderBottom: i < periods.length - 1 ? "1px solid var(--border2)" : "none" }}>
-                  <td style={{ padding: "8px 10px", fontWeight: 700 }}>{p.period}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmtMoneyShort(p.revenue, currency)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right", color: p.netIncome >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{fmtMoneyShort(p.netIncome, currency)}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.netMargin != null ? `${p.netMargin.toFixed(2)}%` : "—"}</td>
-                  <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                    {p.yoyRevenue != null
-                      ? <span style={{ color: p.yoyRevenue >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{p.yoyRevenue > 0 ? "+" : ""}{p.yoyRevenue.toFixed(2)}%</span>
-                      : "—"}
-                    {p.yoyNetIncome != null && (
-                      <span style={{ display: "block", fontSize: 11, color: "var(--text3)", marginTop: 1 }}>
-                        ({p.yoyNetIncome > 0 ? "+" : ""}{p.yoyNetIncome.toFixed(2)}%)
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+        <p className="section-label" style={{ marginBottom: 0 }}>{fin.section}</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[["annual", fin.annual], ["quarterly", fin.quarterly]].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setView(id)}
+              style={{
+                padding: "5px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                border: `1px solid ${view === id ? "#2962ff" : "var(--border2)"}`,
+                background: view === id ? "#2962ff" : "transparent",
+                color: view === id ? "#fff" : "var(--text3)",
+                transition: "background .15s, color .15s, border-color .15s",
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+      </div>
+      <div className="card" style={{ padding: "20px 24px" }}>
+        {periods.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--text3)", fontSize: 14, padding: "20px 0" }}>{fin.noData}</div>
+        ) : (
+          <>
+            <FinancialHistoryChart periods={periods} currency={currency} labels={{ revenue: fin.revenue, netIncome: fin.netIncome }} />
+            <div style={{ overflowX: "auto", marginTop: 16 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border2)" }}>
+                    <th style={{ textAlign: "left", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.period}</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.revenue}</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netIncome}</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netMargin}</th>
+                    <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.yoyChange}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {periods.map((p, i) => (
+                    <tr key={i} style={{ borderBottom: i < periods.length - 1 ? "1px solid var(--border2)" : "none" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 700 }}>{p.period}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmtMoneyShort(p.revenue, currency)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: p.netIncome >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{fmtMoneyShort(p.netIncome, currency)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.netMargin != null ? `${p.netMargin.toFixed(2)}%` : "—"}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                        {p.yoyRevenue != null
+                          ? <span style={{ color: p.yoyRevenue >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{p.yoyRevenue > 0 ? "+" : ""}{p.yoyRevenue.toFixed(2)}%</span>
+                          : "—"}
+                        {p.yoyNetIncome != null && (
+                          <span style={{ display: "block", fontSize: 11, color: "var(--text3)", marginTop: 1 }}>
+                            ({p.yoyNetIncome > 0 ? "+" : ""}{p.yoyNetIncome.toFixed(2)}%)
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
