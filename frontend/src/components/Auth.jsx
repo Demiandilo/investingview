@@ -55,14 +55,54 @@ const CCY_SYMBOL = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 const MINI_VB_W = 300, MINI_VB_H = 100;
 const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 4, MINI_Y1 = 96;
 
-/** Smooth cubic-bezier path through points (horizontal control points = no jagged spikes) */
-function smoothPath(pts) {
-  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
-  for (let i = 0; i < pts.length - 1; i++) {
+/** Monotone cubic Hermite spline through points (smooth, no overshoot/spikes) — like d3's curveMonotoneX */
+function monotonePath(pts) {
+  const n = pts.length;
+  if (n === 2) {
+    const [[x0, y0], [x1, y1]] = pts;
+    const cx = x0 + (x1 - x0) / 3;
+    return `M${x0.toFixed(2)},${y0.toFixed(2)} C${cx.toFixed(2)},${y0.toFixed(2)} ${(x1 - (x1 - x0) / 3).toFixed(2)},${y1.toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
+  }
+
+  const slopes = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = pts[i + 1][0] - pts[i][0];
+    const dy = pts[i + 1][1] - pts[i][1];
+    slopes.push(dy / dx);
+  }
+
+  const m = new Array(n);
+  m[0] = slopes[0];
+  m[n - 1] = slopes[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    m[i] = (slopes[i - 1] * slopes[i] <= 0) ? 0 : (slopes[i - 1] + slopes[i]) / 2;
+  }
+
+  // Fritsch-Carlson: clamp tangents so the curve stays monotone (no overshoot between points)
+  for (let i = 0; i < n - 1; i++) {
+    if (slopes[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+    } else {
+      const a = m[i] / slopes[i];
+      const b = m[i + 1] / slopes[i];
+      const s = a * a + b * b;
+      if (s > 9) {
+        const tau = 3 / Math.sqrt(s);
+        m[i] = tau * a * slopes[i];
+        m[i + 1] = tau * b * slopes[i];
+      }
+    }
+  }
+
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
     const [x0, y0] = pts[i];
     const [x1, y1] = pts[i + 1];
-    const mx = (x0 + x1) / 2;
-    d += ` C${mx.toFixed(1)},${y0.toFixed(1)} ${mx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    const dx3 = (x1 - x0) / 3;
+    const cp1x = x0 + dx3, cp1y = y0 + m[i] * dx3;
+    const cp2x = x1 - dx3, cp2y = y1 - m[i + 1] * dx3;
+    d += ` C${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${x1.toFixed(2)},${y1.toFixed(2)}`;
   }
   return d;
 }
@@ -73,7 +113,7 @@ function formatDDMMYY(dateStr) {
   return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "";
 }
 
-/** Builds a smooth line + area path from 1 year of history (API returns newest → oldest) */
+/** Builds a smooth (monotone) line + area path from 2 years of history (API returns newest → oldest) */
 function buildMiniChart(history, symbol) {
   const ordered = (history || [])
     .filter(d => d && Number.isFinite(d.close) && d.close > 0)
@@ -95,18 +135,18 @@ function buildMiniChart(history, symbol) {
     MINI_Y1 - ((c - yMin) / (yMax - yMin)) * (MINI_Y1 - MINI_Y0),
   ]);
 
-  const pathD = smoothPath(pts);
+  const pathD = monotonePath(pts);
   const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${MINI_Y1} L${pts[0][0].toFixed(1)},${MINI_Y1} Z`;
 
   const changePct = ((closes[n - 1] - closes[0]) / closes[0]) * 100;
 
   // eslint-disable-next-line no-console
-  console.log(`[MiniChart ${symbol}] dati reali 1 anno (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}), var ${changePct.toFixed(2)}%`, ordered);
+  console.log(`[MiniChart ${symbol}] dati reali 2 anni (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}), var ${changePct.toFixed(2)}%`, ordered);
 
-  return { pathD, areaD, hi, lo, changePct, dateFrom: ordered[0].date, dateTo: ordered[n - 1].date };
+  return { pathD, areaD, hi, lo, last: pts[n - 1], changePct, dateFrom: ordered[0].date, dateTo: ordered[n - 1].date };
 }
 
-/** Compact live ticker card: symbol, 1y change% and a long-term trend chart */
+/** Compact live ticker card: symbol, 2y change% and a long-term trend chart */
 function MiniChart({ symbol, exchange }) {
   const [live, setLive] = useState(null);
 
@@ -114,7 +154,7 @@ function MiniChart({ symbol, exchange }) {
     let cancelled = false;
     async function load() {
       const fromDate = new Date();
-      fromDate.setFullYear(fromDate.getFullYear() - 1);
+      fromDate.setFullYear(fromDate.getFullYear() - 2);
       const from = fromDate.toISOString().split("T")[0];
       const [q, h] = await Promise.all([apiGet(`/quote/${symbol}`), apiGet(`/history/${symbol}?from=${from}`)]);
       if (cancelled) return;
@@ -135,7 +175,7 @@ function MiniChart({ symbol, exchange }) {
   const ccy    = CCY_SYMBOL[quote?.currency] || "$";
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
-  const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(11,18,32,0.55)", padding: "1px 4px", borderRadius: 3, pointerEvents: "none" };
+  const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(19,23,34,0.7)", padding: "2px 4px", borderRadius: 4, pointerEvents: "none" };
 
   return (
     <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 190, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
@@ -164,21 +204,22 @@ function MiniChart({ symbol, exchange }) {
         {exchange}
       </div>
 
-      {/* 1-year trend chart — main visual focus of the card */}
+      {/* 2-year trend chart — main visual focus of the card */}
       <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
         {live ? (
           <>
             <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"  stopColor={color} stopOpacity="0.18" />
+                  <stop offset="0%"  stopColor={color} stopOpacity="0.25" />
                   <stop offset="100%" stopColor={color} stopOpacity="0" />
                 </linearGradient>
               </defs>
               <path d={geo.areaD} fill={`url(#${gradId})`} />
-              <path d={geo.pathD} stroke={color} strokeWidth="2" fill="none"
+              <path d={geo.pathD} stroke={color} strokeWidth="1.5" fill="none"
                 strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
               />
+              <circle cx={geo.last[0]} cy={geo.last[1]} r="3" fill={color} stroke="#0b1220" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
             </svg>
             <span style={{ ...axisLabel, top: 4, left: 6 }}>{ccy}{geo.hi.toFixed(0)}</span>
             <span style={{ ...axisLabel, bottom: 22, left: 6 }}>{ccy}{geo.lo.toFixed(0)}</span>
