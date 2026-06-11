@@ -176,6 +176,7 @@ function MiniChart({ symbol, exchange }) {
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
   const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(19,23,34,0.7)", padding: "2px 4px", borderRadius: 4, pointerEvents: "none" };
+  const belowChartLabel = { fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(19,23,34,0.7)", padding: "2px 4px", borderRadius: 4 };
 
   return (
     <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 190, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
@@ -205,26 +206,29 @@ function MiniChart({ symbol, exchange }) {
       </div>
 
       {/* 2-year trend chart — main visual focus of the card */}
-      <div style={{ height: 110, position: "relative", overflow: "hidden" }}>
+      <div style={{ height: 110, display: "flex", flexDirection: "column" }}>
         {live ? (
           <>
-            <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"  stopColor={color} stopOpacity="0.25" />
-                  <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={geo.areaD} fill={`url(#${gradId})`} />
-              <path d={geo.pathD} stroke={color} strokeWidth="1.5" fill="none"
-                strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-              />
-              <circle cx={geo.last[0]} cy={geo.last[1]} r="3" fill={color} stroke="#0b1220" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-            </svg>
-            <span style={{ ...axisLabel, top: 4, left: 6 }}>{ccy}{geo.hi.toFixed(0)}</span>
-            <span style={{ ...axisLabel, bottom: 22, left: 6 }}>{ccy}{geo.lo.toFixed(0)}</span>
-            <span style={{ ...axisLabel, bottom: 4, left: 6 }}>{formatDDMMYY(geo.dateFrom)}</span>
-            <span style={{ ...axisLabel, bottom: 4, right: 6 }}>{formatDDMMYY(geo.dateTo)}</span>
+            <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+              <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+                <defs>
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"  stopColor={color} stopOpacity="0.25" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={geo.areaD} fill={`url(#${gradId})`} />
+                <path d={geo.pathD} stroke={color} strokeWidth="1.5" fill="none"
+                  strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                />
+                <circle cx={geo.last[0]} cy={geo.last[1]} r="3" fill={color} stroke="#0b1220" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <span style={{ ...axisLabel, top: 4, left: 6 }}>{ccy}{geo.hi.toFixed(0)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+              <span style={belowChartLabel}>{ccy}{geo.lo.toFixed(0)} · {formatDDMMYY(geo.dateFrom)}</span>
+              <span style={belowChartLabel}>{formatDDMMYY(geo.dateTo)}</span>
+            </div>
           </>
         ) : (
           <div className="iv-skel" style={{ width: "100%", height: "100%" }} />
