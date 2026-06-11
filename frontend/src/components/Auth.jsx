@@ -175,7 +175,6 @@ function MiniChart({ symbol, exchange }) {
   const ccy    = CCY_SYMBOL[quote?.currency] || "$";
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
-  const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(19,23,34,0.7)", padding: "2px 4px", borderRadius: 4, pointerEvents: "none" };
   const belowChartLabel = { fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(19,23,34,0.7)", padding: "2px 4px", borderRadius: 4 };
 
   return (
@@ -200,9 +199,9 @@ function MiniChart({ symbol, exchange }) {
         )}
       </div>
 
-      {/* Exchange name */}
+      {/* Exchange name + period */}
       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", fontWeight: 500, letterSpacing: "0.03em", marginTop: 2, marginBottom: 6 }}>
-        {exchange}
+        {exchange} · 2 anni
       </div>
 
       {/* 2-year trend chart — main visual focus of the card */}
@@ -223,7 +222,6 @@ function MiniChart({ symbol, exchange }) {
                 />
                 <circle cx={geo.last[0]} cy={geo.last[1]} r="3" fill={color} stroke="#0b1220" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
               </svg>
-              <span style={{ ...axisLabel, top: 4, left: 6 }}>{ccy}{geo.hi.toFixed(0)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
               <span style={belowChartLabel}>{ccy}{geo.lo.toFixed(0)} · {formatDDMMYY(geo.dateFrom)}</span>
