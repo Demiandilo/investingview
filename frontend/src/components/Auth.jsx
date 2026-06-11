@@ -67,17 +67,16 @@ function smoothPath(pts) {
   return d;
 }
 
-/** Formats an ISO "YYYY-MM-DD" date string as "gg/mm" without timezone shifting */
-function formatDDMM(dateStr) {
+/** Formats an ISO "YYYY-MM-DD" date string as "gg/mm/aa" without timezone shifting */
+function formatDDMMYY(dateStr) {
   const m = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[3]}/${m[2]}` : "";
+  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "";
 }
 
-/** Builds a smooth line + area path from the last 30 days of history (API returns newest → oldest) */
+/** Builds a smooth line + area path from 3 years of history (API returns newest → oldest) */
 function buildMiniChart(history, symbol) {
   const ordered = (history || [])
     .filter(d => d && Number.isFinite(d.close) && d.close > 0)
-    .slice(0, 30)
     .reverse(); // oldest -> newest
 
   const n = ordered.length;
@@ -87,7 +86,7 @@ function buildMiniChart(history, symbol) {
   const lo = Math.min(...closes);
   const hi = Math.max(...closes);
   const range = hi - lo;
-  const pad = range > 0 ? range * 0.1 : (hi * 0.01 || 1);
+  const pad = range > 0 ? range * 0.05 : (hi * 0.01 || 1);
   const yMin = lo - pad, yMax = hi + pad;
   const xStep = (MINI_X1 - MINI_X0) / (n - 1);
 
@@ -99,24 +98,24 @@ function buildMiniChart(history, symbol) {
   const pathD = smoothPath(pts);
   const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${MINI_Y1} L${pts[0][0].toFixed(1)},${MINI_Y1} Z`;
 
-  // eslint-disable-next-line no-console
-  console.log(`[MiniChart ${symbol}] dati reali 1mese (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}):`, ordered);
+  const changePct = ((closes[n - 1] - closes[0]) / closes[0]) * 100;
 
-  return {
-    pathD, areaD, last: pts[n - 1],
-    yLabels: [hi, (hi + lo) / 2, lo],
-    xLabels: [ordered[0].date, ordered[Math.floor((n - 1) / 2)].date, ordered[n - 1].date],
-  };
+  // eslint-disable-next-line no-console
+  console.log(`[MiniChart ${symbol}] dati reali 3 anni (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}), var ${changePct.toFixed(2)}%`, ordered);
+
+  return { pathD, areaD, hi, lo, changePct, dateFrom: ordered[0].date, dateTo: ordered[n - 1].date };
 }
 
-/** Compact live ticker card: symbol, exchange, price, change% and a mini line chart */
+/** Compact live ticker card: symbol, 3y change% and a long-term trend chart */
 function MiniChart({ symbol, exchange }) {
   const [live, setLive] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const from = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+      const fromDate = new Date();
+      fromDate.setFullYear(fromDate.getFullYear() - 3);
+      const from = fromDate.toISOString().split("T")[0];
       const [q, h] = await Promise.all([apiGet(`/quote/${symbol}`), apiGet(`/history/${symbol}?from=${from}`)]);
       if (cancelled) return;
       const quote   = Array.isArray(q) ? q[0] : q;
@@ -130,15 +129,16 @@ function MiniChart({ symbol, exchange }) {
   }, [symbol]);
 
   const quote  = live?.quote;
-  const up     = (quote?.change ?? 0) >= 0;
+  const geo    = live?.geo;
+  const up     = (geo?.changePct ?? 0) >= 0;
   const color  = up ? "#00c853" : "#ff3b30";
   const ccy    = CCY_SYMBOL[quote?.currency] || "$";
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
-  const AXIS_COL = 34; // width reserved (within left padding) for the Y-axis price labels
+  const axisLabel = { position: "absolute", fontSize: 10, color: "#787b86", lineHeight: 1, background: "rgba(11,18,32,0.55)", padding: "1px 4px", borderRadius: 3, pointerEvents: "none" };
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 160, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px 20px 35px" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
       {/* Ticker header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ fontSize: 14, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
@@ -148,7 +148,7 @@ function MiniChart({ symbol, exchange }) {
               {ccy}{quote.price.toFixed(2)}
             </div>
             <div style={{ fontSize: 11, fontWeight: 600, color, marginTop: 2 }}>
-              {up ? "+" : ""}{(quote.changePercentage ?? 0).toFixed(2)}%
+              {up ? "+" : ""}{geo.changePct.toFixed(2)}%
             </div>
           </div>
         ) : (
@@ -164,49 +164,31 @@ function MiniChart({ symbol, exchange }) {
         {exchange}
       </div>
 
-      {/* Chart row: Y-axis price labels (borrowed from left padding) + line chart */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", marginLeft: -AXIS_COL }}>
+      {/* 3-year trend chart — main visual focus of the card */}
+      <div style={{ height: 160, position: "relative" }}>
         {live ? (
           <>
-            <div style={{ width: AXIS_COL, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-end", paddingRight: 4, boxSizing: "border-box" }}>
-              {live.geo.yLabels.map((v, i) => (
-                <span key={i} style={{ fontSize: 10, color: "#787b86", lineHeight: 1, whiteSpace: "nowrap" }}>
-                  {ccy}{v.toFixed(0)}
-                </span>
-              ))}
-            </div>
-            <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ flex: 1, minWidth: 0, height: "100%", display: "block" }}>
+            <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%"  stopColor={color} stopOpacity="0.18" />
                   <stop offset="100%" stopColor={color} stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <path d={live.geo.areaD} fill={`url(#${gradId})`} />
-              <path d={live.geo.pathD} stroke={color} strokeWidth="2" fill="none"
+              <path d={geo.areaD} fill={`url(#${gradId})`} />
+              <path d={geo.pathD} stroke={color} strokeWidth="2" fill="none"
                 strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-                strokeDasharray="1000"
-                style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
               />
-              <circle cx={live.geo.last[0]} cy={live.geo.last[1]} r="2.5" fill={color} />
             </svg>
+            <span style={{ ...axisLabel, top: 4, left: 6 }}>{ccy}{geo.hi.toFixed(0)}</span>
+            <span style={{ ...axisLabel, bottom: 22, left: 6 }}>{ccy}{geo.lo.toFixed(0)}</span>
+            <span style={{ ...axisLabel, bottom: 4, left: 6 }}>{formatDDMMYY(geo.dateFrom)}</span>
+            <span style={{ ...axisLabel, bottom: 4, right: 6 }}>{formatDDMMYY(geo.dateTo)}</span>
           </>
         ) : (
-          <div className="iv-skel" style={{ width: "100%", height: "100%", marginLeft: AXIS_COL }} />
+          <div className="iv-skel" style={{ width: "100%", height: "100%" }} />
         )}
       </div>
-
-      {/* X-axis date labels, aligned under the chart */}
-      {live && (
-        <div style={{ display: "flex", marginLeft: -AXIS_COL, marginTop: 4 }}>
-          <div style={{ width: AXIS_COL, flexShrink: 0 }} />
-          <div style={{ flex: 1, display: "flex", justifyContent: "space-between" }}>
-            {live.geo.xLabels.map((d, i) => (
-              <span key={i} style={{ fontSize: 10, color: "#787b86" }}>{formatDDMM(d)}</span>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
