@@ -40,7 +40,7 @@ const T = {
       ctaFinalTitle: "Pronto a investire\ncon più intelligenza?",
       ctaFinalSub: "Unisciti a migliaia di investitori che usano InvestingView ogni giorno per trovare opportunità nei mercati.",
       ctaFinalBtn: "Crea il tuo account gratuito →",
-      ctaFinalNote: "Gratis per sempre · Nessun limite · Nessuna carta",
+      ctaFinalNote: "Nessun limite · Nessuna carta",
       features: [
         { title: "Real-Time Data",    desc: "Prezzi live al secondo da NYSE, NASDAQ, Borsa di Milano, Tokyo e 50+ mercati." },
         { title: "AI Analysis",       desc: "Analisi fondamentale e tecnica automatica con Gemini AI, in italiano." },
@@ -431,7 +431,7 @@ const T = {
       ctaFinalTitle: "Ready to invest\nsmarter?",
       ctaFinalSub: "Join thousands of investors who use InvestingView every day to find opportunities in the markets.",
       ctaFinalBtn: "Create your free account →",
-      ctaFinalNote: "Free forever · No limits · No card",
+      ctaFinalNote: "No limits · No card",
       features: [
         { title: "Real-Time Data",    desc: "Live prices per second from NYSE, NASDAQ, Milan, Tokyo and 50+ markets." },
         { title: "AI Analysis",       desc: "Automatic fundamental and technical analysis with Gemini AI." },
