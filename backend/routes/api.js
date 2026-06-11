@@ -1544,6 +1544,60 @@ router.get('/earnings/:symbol', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Income Statement History (Revenue & Net Income, last 4-5 years) ─────────
+router.get('/income-statement/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const data = await cachedLong(`incomestmt_${symbol}`, async () => {
+      const [stmtRes, priceRes] = await Promise.allSettled([
+        yf.quoteSummary(symbol, { modules: ['incomeStatementHistory'] }),
+        yf.quoteSummary(symbol, { modules: ['price'] }),
+      ]);
+      const currency = priceRes.status === 'fulfilled' ? (priceRes.value.price?.currency ?? null) : null;
+      const history = stmtRes.status === 'fulfilled'
+        ? (stmtRes.value.incomeStatementHistory?.incomeStatementHistory || [])
+        : [];
+
+      let rows = history
+        .filter(p => p.totalRevenue != null && p.netIncome != null && p.endDate)
+        .map(p => ({
+          period:    new Date(p.endDate).getFullYear().toString(),
+          revenue:   p.totalRevenue,
+          netIncome: p.netIncome,
+        }));
+
+      // FMP fallback if Yahoo gave nothing usable
+      if (!rows.length) {
+        const fmpData = await fmp('/income-statement', { symbol, limit: 5 }).catch(() => null);
+        if (Array.isArray(fmpData)) {
+          rows = fmpData
+            .filter(p => p.revenue != null && p.netIncome != null)
+            .map(p => ({
+              period:    (p.calendarYear || p.date || '').toString().slice(0, 4),
+              revenue:   p.revenue,
+              netIncome: p.netIncome,
+            }))
+            .filter(p => p.period);
+        }
+      }
+
+      // Oldest → newest so YoY can be computed against the prior period
+      rows.sort((a, b) => a.period.localeCompare(b.period));
+      rows = rows.slice(-5);
+      const periods = rows.map((p, i) => {
+        const prev = rows[i - 1];
+        const netMargin    = p.revenue ? +((p.netIncome / p.revenue) * 100).toFixed(2) : null;
+        const yoyRevenue   = prev?.revenue   ? +(((p.revenue - prev.revenue) / Math.abs(prev.revenue)) * 100).toFixed(2) : null;
+        const yoyNetIncome = prev?.netIncome ? +(((p.netIncome - prev.netIncome) / Math.abs(prev.netIncome)) * 100).toFixed(2) : null;
+        return { period: p.period, revenue: p.revenue, netIncome: p.netIncome, netMargin, yoyRevenue, yoyNetIncome };
+      }).reverse(); // most recent first
+
+      return { symbol, currency, periods };
+    });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Analyst Ratings ──────────────────────────────────────────────────────────
 router.get('/analysts/:symbol', async (req, res) => {
   try {

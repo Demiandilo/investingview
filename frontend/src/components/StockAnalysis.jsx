@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo, Component } from "react";
-import { API, fmt, fmtPrice, M, calcRSI, useLocalStorage } from "../api.js";
+import { API, fmt, fmtPrice, fmtMoneyShort, M, calcRSI, useLocalStorage } from "../api.js";
 import { MetricTile, VerdictBadge } from "./ui/MetricTile.jsx";
 import { Spinner, Skeleton } from "./ui/Spinner.jsx";
-import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart } from "./ui/Charts.jsx";
+import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart, FinancialHistoryChart } from "./ui/Charts.jsx";
 import { useToast } from "./ui/Toast.jsx";
 import { useLang } from "../i18n.js";
 
@@ -632,6 +632,67 @@ function EarningsSection({ earnings }) {
   );
 }
 
+/* ─── Financial History Section (Revenue & Net Income) ───────────────────── */
+function FinancialHistorySection({ financials }) {
+  const { t } = useLang();
+  const fin = t("analysis.financials");
+  const periods = financials?.periods;
+  const currency = financials?.currency;
+
+  if (!periods || periods.length === 0) {
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <p className="section-label">{fin.section}</p>
+        <div className="card" style={{ padding: "20px 24px", textAlign: "center", color: "var(--text3)", fontSize: 14 }}>
+          {fin.noData}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <p className="section-label">{fin.section}</p>
+      <div className="card" style={{ padding: "20px 24px" }}>
+        <FinancialHistoryChart periods={periods} currency={currency} labels={{ revenue: fin.revenue, netIncome: fin.netIncome }} />
+        <div style={{ overflowX: "auto", marginTop: 16 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border2)" }}>
+                <th style={{ textAlign: "left", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.period}</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.revenue}</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netIncome}</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.netMargin}</th>
+                <th style={{ textAlign: "right", padding: "8px 10px", color: "var(--text3)", fontWeight: 600, fontSize: 11 }}>{fin.yoyChange}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {periods.map((p, i) => (
+                <tr key={i} style={{ borderBottom: i < periods.length - 1 ? "1px solid var(--border2)" : "none" }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 700 }}>{p.period}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{fmtMoneyShort(p.revenue, currency)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", color: p.netIncome >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{fmtMoneyShort(p.netIncome, currency)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>{p.netMargin != null ? `${p.netMargin.toFixed(2)}%` : "—"}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                    {p.yoyRevenue != null
+                      ? <span style={{ color: p.yoyRevenue >= 0 ? "var(--green)" : "var(--red)", fontWeight: 600 }}>{p.yoyRevenue > 0 ? "+" : ""}{p.yoyRevenue.toFixed(2)}%</span>
+                      : "—"}
+                    {p.yoyNetIncome != null && (
+                      <span style={{ display: "block", fontSize: 11, color: "var(--text3)", marginTop: 1 }}>
+                        ({p.yoyNetIncome > 0 ? "+" : ""}{p.yoyNetIncome.toFixed(2)}%)
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Analysts Card ───────────────────────────────────────────────────────── */
 function AnalystsCard({ analysts, price }) {
   const { t } = useLang();
@@ -757,6 +818,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
   const [sentD, setSentD] = useState(null);
   const [aiD, setAiD] = useState(null);
   const [earnings, setEarnings] = useState(null);
+  const [financials, setFinancials] = useState(null);
   const [analysts, setAnalysts] = useState(null);
   const [insider, setInsider] = useState(null);
   const [tab, setTab] = useState("fondamentali");
@@ -768,7 +830,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
 
   const run = useCallback(async input => {
     if (!input) return;
-    setLoading(true); setData(null); setHist([]); setShortD(null); setSentD(null); setAiD(null); setEarnings(null); setAnalysts(null); setInsider(null); setTab("fondamentali");
+    setLoading(true); setData(null); setHist([]); setShortD(null); setSentD(null); setAiD(null); setEarnings(null); setFinancials(null); setAnalysts(null); setInsider(null); setTab("fondamentali");
     setTranslatedDesc(null); setDescLoading(false); setTranslatedTitles(null); setTitlesLoading(false);
     setPhase(t("analysis.loading.searching"));
     const s = await API.resolveSymbol(input);
@@ -786,11 +848,12 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
       const pe = rat?.peRatioTTM;
       const peg = rat?.pegRatioTTM ?? ((pe && eg && eg > 0) ? +(pe / eg).toFixed(2) : null);
       const metrics = { prezzo: q?.price, pe, peg, roe: rat?.returnOnEquityTTM ? +(rat.returnOnEquityTTM * 100).toFixed(1) : null, debtEquity: rat?.debtEquityRatioTTM, dividendYield: rat?.dividendYielTTM ? +(rat.dividendYielTTM * 100).toFixed(2) : null, marketCap: prof?.marketCap, settore: prof?.sector };
-      const [ai, sent, sh, earningsRes, analystsRes, insiderRes] = await Promise.all([
+      const [ai, sent, sh, earningsRes, financialsRes, analystsRes, insiderRes] = await Promise.all([
         API.aiAnalysis(s, metrics).catch(() => null),
         API.sentiment(s, prof?.companyName).catch(() => null),
         API.shortInterest(s).catch(() => null),
         API.getEarnings(s).catch(() => null),
+        API.getIncomeStatement(s).catch(() => null),
         API.getAnalysts(s).catch(() => null),
         API.getInsider(s).catch(() => null),
       ]);
@@ -798,6 +861,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
       setSentD(sent || { _noData: true, label: "N/D", score: 0, positive: 0, neutral: 0, negative: 0, articles: [], summary: "" });
       setShortD(sh || { _noData: true, shortInterest: null, daysToCover: null, sharesShorted: null, trend: null });
       setEarnings(earningsRes);
+      setFinancials(financialsRes);
       setAnalysts(analystsRes);
       setInsider(insiderRes);
     }
@@ -983,6 +1047,9 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
 
           {/* Earnings calendar */}
           {!isCommodityMode && <EarningsSection earnings={earnings} />}
+
+          {/* Historical financials: revenue & net income */}
+          {!isCommodityMode && <FinancialHistorySection financials={financials} />}
 
           {/* Tabs */}
           <div className="tab-wrap" style={{ overflowX: "auto", marginBottom: 20 }}>

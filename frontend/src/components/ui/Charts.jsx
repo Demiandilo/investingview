@@ -4,7 +4,7 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend, LabelList,
 } from "recharts";
-import { fmt } from "../../api.js";
+import { fmt, fmtMoneyShort } from "../../api.js";
 
 const PIE_COLORS = ["#0071e3","#34c759","#ff9f0a","#ff3b30","#8b5cf6","#06b6d4","#f59e0b","#10b981"];
 
@@ -208,6 +208,28 @@ export function DividendsChart({ dividends }) {
         <YAxis tick={{ fontSize: 10, fill: "var(--text3)" }} tickFormatter={v => `$${v.toFixed(2)}`} axisLine={false} tickLine={false} />
         <Tooltip formatter={v => [`$${v.toFixed(4)}`, "Dividendo ann."]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
         <Bar dataKey="value" fill="#0071e3" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ─── Financial History Chart (Revenue & Net Income) ─────────────────────── */
+export function FinancialHistoryChart({ periods, currency, labels }) {
+  const data = useMemo(() => [...(periods || [])].reverse(), [periods]); // oldest → newest, left to right
+  if (!data.length) return null;
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" vertical={false} />
+        <XAxis dataKey="period" tick={{ fontSize: 11, fill: "var(--text3)" }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 10, fill: "var(--text3)" }} tickFormatter={v => fmtMoneyShort(v, currency)} axisLine={false} tickLine={false} width={56} />
+        <Tooltip formatter={(v, name) => [fmtMoneyShort(v, currency), name]} contentStyle={{ borderRadius: 10, fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="revenue" name={labels?.revenue || "Fatturato"} fill="#0071e3" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="netIncome" name={labels?.netIncome || "Utile Netto"} radius={[4, 4, 0, 0]}>
+          {data.map((d, i) => <Cell key={i} fill={d.netIncome >= 0 ? "#34c759" : "#ff3b30"} />)}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );

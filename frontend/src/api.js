@@ -75,6 +75,7 @@ export const API = {
   async shortInterest(sym) { return await post(`/short/${sym}`, {}); },
   async sentiment(sym, companyName) { return await post(`/sentiment/${sym}`, { companyName: companyName || null }); },
   async getEarnings(sym)  { return await cachedGet(`/earnings/${sym}`,  3_600_000); },
+  async getIncomeStatement(sym) { return await cachedGet(`/income-statement/${sym}`, 3_600_000); },
   async getAnalysts(sym)  { return await cachedGet(`/analysts/${sym}`,  3_600_000); },
   async getInsider(sym)   { return await cachedGet(`/insider/${sym}`,   3_600_000); },
   async getFearGreed()    { return await cachedGet('/feargreed',         900_000);  },
@@ -91,6 +92,17 @@ export function fmtPrice(n, currency) {
   if (n == null) return "—";
   const sym = CURRENCY_SYMS[currency] || (currency ? currency + ' ' : '$');
   return `${sym}${Number(n).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Currency-aware large number formatter: €1.23B, $456.78M, etc. */
+export function fmtMoneyShort(n, currency) {
+  if (n == null) return "—";
+  const sym = CURRENCY_SYMS[currency] || (currency ? currency + ' ' : '$');
+  const a = Math.abs(n);
+  if (a >= 1e12) return `${sym}${(n / 1e12).toFixed(2)}T`;
+  if (a >= 1e9)  return `${sym}${(n / 1e9).toFixed(2)}B`;
+  if (a >= 1e6)  return `${sym}${(n / 1e6).toFixed(2)}M`;
+  return `${sym}${Number(n).toLocaleString("it-IT")}`;
 }
 
 export const fmt = {

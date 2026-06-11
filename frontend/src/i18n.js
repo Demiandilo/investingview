@@ -195,6 +195,15 @@ const T = {
         epsMin: "EPS MIN", epsExpected: "EPS ATTESO", epsMax: "EPS MAX",
         estimate: "Stima:",
       },
+      financials: {
+        section: "Andamento Finanziario",
+        revenue: "Fatturato",
+        netIncome: "Utile Netto",
+        netMargin: "Margine Netto %",
+        yoyChange: "Variazione % YoY",
+        period: "Periodo",
+        noData: "Dati storici non disponibili per questo titolo",
+      },
       analysts: {
         consensus: "CONSENSUS ANALISTI",
         targetPrice: "TARGET PRICE",
@@ -585,6 +594,15 @@ const T = {
         history: "LAST QUARTERS HISTORY",
         epsMin: "EPS MIN", epsExpected: "EPS EST.", epsMax: "EPS MAX",
         estimate: "Est.:",
+      },
+      financials: {
+        section: "Financial History",
+        revenue: "Revenue",
+        netIncome: "Net Income",
+        netMargin: "Net Margin %",
+        yoyChange: "YoY Change %",
+        period: "Period",
+        noData: "Historical data not available for this stock",
       },
       analysts: {
         consensus: "ANALYST CONSENSUS",
