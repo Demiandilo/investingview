@@ -53,7 +53,7 @@ export function Logo({ size = 32 }) {
 const CHART_REFRESH_MS = 5 * 60 * 1000;
 const CCY_SYMBOL = { USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 const MINI_VB_W = 300, MINI_VB_H = 100;
-const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 8, MINI_Y1 = 88;
+const MINI_X0 = 0, MINI_X1 = 300, MINI_Y0 = 4, MINI_Y1 = 96;
 
 /** Smooth cubic-bezier path through points (horizontal control points = no jagged spikes) */
 function smoothPath(pts) {
@@ -80,7 +80,8 @@ function buildMiniChart(history) {
   const closes = ordered.map(d => d.close);
   const lo = Math.min(...closes);
   const hi = Math.max(...closes);
-  const pad = (hi - lo) * 0.1 || hi * 0.02 || 1;
+  const range = hi - lo;
+  const pad = range > 0 ? range * 0.1 : (hi * 0.01 || 1);
   const yMin = lo - pad, yMax = hi + pad;
   const xStep = (MINI_X1 - MINI_X0) / (n - 1);
 
@@ -122,7 +123,7 @@ function MiniChart({ symbol, exchange }) {
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 110, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "14px 16px" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 160, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
       {/* Ticker header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ fontSize: 14, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
@@ -149,7 +150,7 @@ function MiniChart({ symbol, exchange }) {
       </div>
 
       {/* Mini SVG chart — bleeds to card edges, fills remaining height */}
-      <div style={{ flex: 1, minHeight: 0, margin: "0 -16px -14px" }}>
+      <div style={{ flex: 1, minHeight: 0, margin: "0 -18px -16px" }}>
         {live ? (
           <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
             <defs>
