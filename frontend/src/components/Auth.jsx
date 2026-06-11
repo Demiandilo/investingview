@@ -67,8 +67,14 @@ function smoothPath(pts) {
   return d;
 }
 
+/** Formats an ISO "YYYY-MM-DD" date string as "gg/mm" without timezone shifting */
+function formatDDMM(dateStr) {
+  const m = String(dateStr || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}` : "";
+}
+
 /** Builds a smooth line + area path from the last 30 days of history (API returns newest → oldest) */
-function buildMiniChart(history) {
+function buildMiniChart(history, symbol) {
   const ordered = (history || [])
     .filter(d => d && Number.isFinite(d.close) && d.close > 0)
     .slice(0, 30)
@@ -93,7 +99,14 @@ function buildMiniChart(history) {
   const pathD = smoothPath(pts);
   const areaD = `${pathD} L${pts[n - 1][0].toFixed(1)},${MINI_Y1} L${pts[0][0].toFixed(1)},${MINI_Y1} Z`;
 
-  return { pathD, areaD, last: pts[n - 1] };
+  // eslint-disable-next-line no-console
+  console.log(`[MiniChart ${symbol}] dati reali 1mese (${n} gg, ${ordered[0].date} -> ${ordered[n - 1].date}):`, ordered);
+
+  return {
+    pathD, areaD, last: pts[n - 1],
+    yLabels: [hi, (hi + lo) / 2, lo],
+    xLabels: [ordered[0].date, ordered[Math.floor((n - 1) / 2)].date, ordered[n - 1].date],
+  };
 }
 
 /** Compact live ticker card: symbol, exchange, price, change% and a mini line chart */
@@ -108,7 +121,7 @@ function MiniChart({ symbol, exchange }) {
       if (cancelled) return;
       const quote   = Array.isArray(q) ? q[0] : q;
       const history = Array.isArray(h) ? h : [];
-      const geo = quote?.price ? buildMiniChart(history) : null;
+      const geo = quote?.price ? buildMiniChart(history, symbol) : null;
       if (geo) setLive({ quote, geo });
     }
     load();
@@ -122,8 +135,10 @@ function MiniChart({ symbol, exchange }) {
   const ccy    = CCY_SYMBOL[quote?.currency] || "$";
   const gradId = `mg-${symbol.replace(/[^A-Za-z0-9]/g, "")}`;
 
+  const AXIS_COL = 34; // width reserved (within left padding) for the Y-axis price labels
+
   return (
-    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 160, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px" }}>
+    <div style={{ background: "#0b1220", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, overflow: "hidden", height: 160, boxSizing: "border-box", boxShadow: "0 8px 20px rgba(0,0,0,0.24)", display: "flex", flexDirection: "column", padding: "16px 18px 20px 35px" }}>
       {/* Ticker header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ fontSize: 14, fontWeight: 800, color: "white", letterSpacing: "0.02em" }}>{symbol}</span>
@@ -149,28 +164,49 @@ function MiniChart({ symbol, exchange }) {
         {exchange}
       </div>
 
-      {/* Mini SVG chart — bleeds to card edges, fills remaining height */}
-      <div style={{ flex: 1, minHeight: 0, margin: "0 -18px -16px" }}>
+      {/* Chart row: Y-axis price labels (borrowed from left padding) + line chart */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", marginLeft: -AXIS_COL }}>
         {live ? (
-          <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
-            <defs>
-              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"  stopColor={color} stopOpacity="0.18" />
-                <stop offset="100%" stopColor={color} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d={live.geo.areaD} fill={`url(#${gradId})`} />
-            <path d={live.geo.pathD} stroke={color} strokeWidth="2" fill="none"
-              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-              strokeDasharray="1000"
-              style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
-            />
-            <circle cx={live.geo.last[0]} cy={live.geo.last[1]} r="2.5" fill={color} />
-          </svg>
+          <>
+            <div style={{ width: AXIS_COL, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-end", paddingRight: 4, boxSizing: "border-box" }}>
+              {live.geo.yLabels.map((v, i) => (
+                <span key={i} style={{ fontSize: 10, color: "#787b86", lineHeight: 1, whiteSpace: "nowrap" }}>
+                  {ccy}{v.toFixed(0)}
+                </span>
+              ))}
+            </div>
+            <svg viewBox={`0 0 ${MINI_VB_W} ${MINI_VB_H}`} preserveAspectRatio="none" style={{ flex: 1, minWidth: 0, height: "100%", display: "block" }}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"  stopColor={color} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={live.geo.areaD} fill={`url(#${gradId})`} />
+              <path d={live.geo.pathD} stroke={color} strokeWidth="2" fill="none"
+                strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                strokeDasharray="1000"
+                style={{ animation: "ivDrawLineMini 1.8s cubic-bezier(.22,1,.36,1) forwards" }}
+              />
+              <circle cx={live.geo.last[0]} cy={live.geo.last[1]} r="2.5" fill={color} />
+            </svg>
+          </>
         ) : (
-          <div className="iv-skel" style={{ width: "100%", height: "100%" }} />
+          <div className="iv-skel" style={{ width: "100%", height: "100%", marginLeft: AXIS_COL }} />
         )}
       </div>
+
+      {/* X-axis date labels, aligned under the chart */}
+      {live && (
+        <div style={{ display: "flex", marginLeft: -AXIS_COL, marginTop: 4 }}>
+          <div style={{ width: AXIS_COL, flexShrink: 0 }} />
+          <div style={{ flex: 1, display: "flex", justifyContent: "space-between" }}>
+            {live.geo.xLabels.map((d, i) => (
+              <span key={i} style={{ fontSize: 10, color: "#787b86" }}>{formatDDMM(d)}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
