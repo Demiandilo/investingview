@@ -1123,24 +1123,6 @@ router.get('/technical-analysis/:symbol', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Peers (similar companies) ────────────────────────────────────────────────
-router.get('/peers/:symbol', async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const data = await cached(`peers_${symbol}`, async () => {
-      const fmpPeers = await fmp('/stock-peers', { symbol }).catch(() => null);
-      if (fmpPeers?.[0]?.peersList) return fmpPeers[0].peersList.slice(0, 6);
-      // Fallback: sector-based from STATIC_POOL
-      const prof = await fmp('/profile', { symbol }).catch(() => []);
-      const sector = prof?.[0]?.sector || '';
-      return STATIC_POOL
-        .filter(s => s.symbol !== symbol && s.sector.toLowerCase().includes(sector.toLowerCase().split(' ')[0]))
-        .slice(0, 6).map(s => s.symbol);
-    });
-    res.json(data || []);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 // ─── Dividends ────────────────────────────────────────────────────────────────
 router.get('/dividends/:symbol', async (req, res) => {
   try {

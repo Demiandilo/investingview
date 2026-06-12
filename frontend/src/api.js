@@ -25,6 +25,22 @@ async function post(path, body) {
   } catch { return null; }
 }
 
+// Authenticated request (PUT/DELETE) — attaches the JWT from localStorage
+async function authFetch(path, method, body) {
+  try {
+    const token = localStorage.getItem("investingview_token");
+    const r = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return await r.json();
+  } catch { return { error: "Impossibile connettersi al server." }; }
+}
+
 // Treat as ticker only if original input is already uppercase (no lowercase = user typed a ticker).
 // Supports international: AAPL, BRK.A, ISP.MI, 600519.SS (up to 12 chars), and indices: ^IXIC, ^GSPC.
 export const looksLikeTicker = s => /^\^?[A-Z0-9.\-]{1,12}$/.test(s.trim());
@@ -46,7 +62,6 @@ export const API = {
   async getProfile(sym) { const d = await cachedGet(`/profile/${sym}`, 3_600_000);   return Array.isArray(d) ? d[0] : d; },
   async getRatios(sym)  { const d = await cachedGet(`/ratios/${sym}`, 3_600_000);    return Array.isArray(d) ? d[0] : d; },
   async getGrowth(sym)  { const d = await cachedGet(`/growth/${sym}`, 3_600_000);    return Array.isArray(d) ? d[0] : d; },
-  async getPeers(sym)   { const d = await cachedGet(`/peers/${sym}`, 86_400_000);    return Array.isArray(d) ? d : []; },
   async getDividends(sym){ const d = await cachedGet(`/dividends/${sym}`, 3_600_000); return Array.isArray(d) ? d : []; },
 
   async getHistory(sym, from) {
@@ -84,6 +99,10 @@ export const API = {
   async translate(text)    { return await post("/translate", { text }); },
   async translateTitles(titles) { return await post("/translate-titles", { titles }); },
   async getStockNews(q)    { const d = await get(`/news/${encodeURIComponent(q)}`); return d?.articles || []; },
+
+  async updateProfile(payload)  { return await authFetch("/auth/profile",  "PUT",    payload); },
+  async updatePassword(payload) { return await authFetch("/auth/password", "PUT",    payload); },
+  async deleteAccount()         { return await authFetch("/auth/account",  "DELETE"); },
 };
 
 /* ─── Formatters ─────────────────────────────────────────────────────────── */
@@ -138,6 +157,38 @@ export function useLocalStorage(key, init) {
     });
   }, [key]);
   return [val, setStored];
+}
+
+/* ─── Timezone helpers ───────────────────────────────────────────────────── */
+const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+// Returns { minutes: minutes-since-midnight, weekday: 0=Sun..6=Sat } for `date` in `timeZone`, DST-safe.
+function getZonedParts(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short' }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return { minutes: (Number(map.hour) % 24) * 60 + Number(map.minute), weekday: WEEKDAYS[map.weekday] };
+}
+
+export function getZonedMinutes(date, timeZone) {
+  return getZonedParts(date, timeZone).minutes;
+}
+
+/* ─── Global markets open/closed ─────────────────────────────────────────── */
+const GLOBAL_MARKETS = [
+  { key: 'italy', tz: 'Europe/Rome',      sessions: [[9 * 60, 17 * 60 + 30]] },
+  { key: 'usa',   tz: 'America/New_York', sessions: [[9 * 60 + 30, 16 * 60]] },
+  { key: 'japan', tz: 'Asia/Tokyo',       sessions: [[9 * 60, 11 * 60 + 30], [12 * 60 + 30, 15 * 60]] },
+  { key: 'china', tz: 'Asia/Shanghai',    sessions: [[9 * 60 + 30, 11 * 60 + 30], [13 * 60, 15 * 60]] },
+];
+
+// Open/closed status for Italy (FTSE MIB), USA (NYSE/NASDAQ), Japan (Nikkei) and China (Shanghai/HK), Mon-Fri only.
+export function getGlobalMarketsStatus(now = new Date()) {
+  return GLOBAL_MARKETS.map(({ key, tz, sessions }) => {
+    const { minutes, weekday } = getZonedParts(now, tz);
+    const open = weekday >= 1 && weekday <= 5 && sessions.some(([start, end]) => minutes >= start && minutes < end);
+    return { key, open };
+  });
 }
 
 /* ─── Market status ──────────────────────────────────────────────────────── */

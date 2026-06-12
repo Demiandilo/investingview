@@ -22,6 +22,7 @@ function NavIcon({ id, active, size = 22 }) {
     watchlist: <svg {...s} viewBox="0 0 24 24" fill={active ? "var(--blue)" : "none"} stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
     glossario: <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
     profilo:   <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+    settings:  <svg {...s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   };
   return icons[id] || null;
 }
@@ -120,6 +121,17 @@ function ProfileDrawer({ open, onClose, user, dark, onToggleDark, lang, onSetLan
             <LangToggle lang={lang} onSetLang={onSetLang} large />
           </div>
 
+          {/* Impostazioni Account */}
+          <button onClick={() => { onNav("account"); onClose(); }} style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 12,
+            padding: "15px 0", borderBottom: "1px solid var(--border2)",
+            background: "none", border: "none",
+            cursor: "pointer", fontSize: 15, fontWeight: 500, color: "var(--text)",
+          }}>
+            <NavIcon id="settings" active={false} size={20} />
+            {t("nav.account")}
+          </button>
+
           {/* Glossario */}
           <button onClick={() => { onNav("glossario"); onClose(); }} style={{
             width: "100%", display: "flex", alignItems: "center", gap: 12,
@@ -201,6 +213,9 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
             <div style={{ minWidth: 0 }}>
               <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "Utente"}</p>
             </div>
+            <button onClick={() => onNav("account")} title={t("nav.account")} style={{ background: page === "account" ? "var(--blue-light)" : "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: page === "account" ? "var(--blue)" : "var(--text2)" }}>
+              <NavIcon id="settings" active={page === "account"} size={14} />
+            </button>
           </div>
           <LangToggle lang={lang} onSetLang={onSetLang} />
         </div>

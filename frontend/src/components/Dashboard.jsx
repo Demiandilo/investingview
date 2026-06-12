@@ -1,12 +1,36 @@
 import { useState, useEffect } from "react";
 import TickerBand from "./TickerBand.jsx";
-import { API, fmt, getMarketStatus, useLocalStorage } from "../api.js";
+import { API, fmt, getMarketStatus, getGlobalMarketsStatus, useLocalStorage } from "../api.js";
 import { useLang } from "../i18n.js";
 import { TinySparkline, MiniSparkline } from "./ui/MiniSparkline.jsx";
 import { SectorBarChart, FearGreedGauge } from "./ui/Charts.jsx";
 import { Skeleton } from "./ui/Spinner.jsx";
 
 const CHIPS = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL", "META", "JPM", "JNJ", "KO"];
+
+/* ─── Global markets open/closed row ─────────────────────────────────────── */
+function MarketDot({ open }) {
+  return (
+    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="4" cy="4" r="4" fill={open ? "var(--green)" : "var(--text3)"} />
+    </svg>
+  );
+}
+
+function GlobalMarketsRow({ now }) {
+  const { t } = useLang();
+  const names = t("dashboard.markets");
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", fontSize: 12, fontWeight: 600, color: "var(--text2)" }}>
+      {getGlobalMarketsStatus(now).map(m => (
+        <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <MarketDot open={m.open} />
+          <span>{names[m.key]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* ─── DashboardHeader ────────────────────────────────────────────────────── */
 function DashboardHeader() {
@@ -17,15 +41,20 @@ function DashboardHeader() {
   const locale = lang === "en" ? "en-US" : "it-IT";
   const dateStr = now.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" });
   return (
-    <div className="dash-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-      <div>
-        <p style={{ fontSize: 13, color: "var(--text3)", fontWeight: 500, textTransform: "capitalize", marginBottom: 2 }}>{dateStr}</p>
-        <p style={{ fontSize: 11, color: "var(--text3)" }}>{t("dashboard.updatedAt")} {fmt.time(now)}</p>
+    <div style={{ marginBottom: 24 }}>
+      <div className="dash-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p style={{ fontSize: 13, color: "var(--text3)", fontWeight: 500, textTransform: "capitalize", marginBottom: 2 }}>{dateStr}</p>
+          <p style={{ fontSize: 11, color: "var(--text3)" }}>{t("dashboard.updatedAt")} {fmt.time(now)}</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: status.open ? "var(--green-light)" : "var(--surface2)", color: status.color, padding: "9px 16px", borderRadius: 24, fontSize: 13, fontWeight: 700, border: `1px solid ${status.open ? "rgba(52,199,89,.25)" : "var(--border)"}` }}>
+          <div className={status.open ? "pulse" : ""} style={{ width: 8, height: 8, borderRadius: "50%", background: status.color, flexShrink: 0 }} />
+          <span>{status.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 400, opacity: .7 }}>{status.sub}</span>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: status.open ? "var(--green-light)" : "var(--surface2)", color: status.color, padding: "9px 16px", borderRadius: 24, fontSize: 13, fontWeight: 700, border: `1px solid ${status.open ? "rgba(52,199,89,.25)" : "var(--border)"}` }}>
-        <div className={status.open ? "pulse" : ""} style={{ width: 8, height: 8, borderRadius: "50%", background: status.color, flexShrink: 0 }} />
-        <span>{status.label}</span>
-        <span style={{ fontSize: 11, fontWeight: 400, opacity: .7 }}>{status.sub}</span>
+      <div style={{ marginTop: 12 }}>
+        <GlobalMarketsRow now={now} />
       </div>
     </div>
   );

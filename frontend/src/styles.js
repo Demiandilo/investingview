@@ -139,7 +139,6 @@ export const RESP = `
   .dash-split { grid-template-columns: 1fr !important; }
   .sectors-chart-wrap { height: 180px !important; }
   .dash-bottom { grid-template-columns: 1fr !important; }
-  .peers-grid { grid-template-columns: repeat(2,1fr) !important; }
   .card { border-radius: 10px !important; }
   .data-table td, .data-table th { padding: 10px 12px !important; font-size: 13px !important; }
   .tabs { gap: 1px !important; }

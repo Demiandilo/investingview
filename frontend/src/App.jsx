@@ -15,6 +15,7 @@ const Screener      = lazy(() => import("./components/Screener.jsx"));
 const Portfolio     = lazy(() => import("./components/Portfolio.jsx"));
 const Watchlist     = lazy(() => import("./components/Watchlist.jsx"));
 const Glossario     = lazy(() => import("./components/Glossario.jsx"));
+const AccountSettings = lazy(() => import("./components/AccountSettings.jsx"));
 
 function PageLoader() {
   return (
@@ -105,6 +106,10 @@ function AppInner() {
     setActiveSym(null);
   }, [setUser]);
 
+  const handleUpdateUser = useCallback(u => {
+    setUser(prev => ({ ...prev, ...u }));
+  }, [setUser]);
+
   // Show auth page if not logged in
   if (!user) {
     return <Auth onAuth={u => setUser(u)} />;
@@ -165,6 +170,14 @@ function AppInner() {
                 />
               )}
               {page === "glossario" && <Glossario />}
+              {page === "account" && (
+                <AccountSettings
+                  user={user}
+                  onUpdateUser={handleUpdateUser}
+                  onLogout={handleLogout}
+                  onGoHome={() => go("dashboard")}
+                />
+              )}
             </Suspense>
           </div>
         </main>

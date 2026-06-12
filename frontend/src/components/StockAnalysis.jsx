@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo, Component } from "react";
-import { API, fmt, fmtPrice, fmtMoneyShort, M, calcRSI, useLocalStorage } from "../api.js";
+import { API, fmt, fmtPrice, fmtMoneyShort, M, calcRSI, useLocalStorage, getZonedMinutes } from "../api.js";
 import { MetricTile, VerdictBadge } from "./ui/MetricTile.jsx";
 import { Spinner, Skeleton } from "./ui/Spinner.jsx";
 import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart, FinancialHistoryChart } from "./ui/Charts.jsx";
@@ -58,55 +58,6 @@ function commodityLabelKey(sym) {
   if (/^[A-Z]+-USD$/.test(sym)) return 'crypto';
   if (/^[A-Z]{1,4}=F$/.test(sym)) return 'futures';
   return 'etf';
-}
-
-/* ─── Similar Companies ──────────────────────────────────────────────────── */
-function SimilarCompanies({ symbol, onSearch }) {
-  const { t } = useLang();
-  const [peers, setPeers] = useState([]);
-  const [quotes, setQuotes] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!symbol) return;
-    setLoading(true);
-    API.getPeers(symbol).then(async syms => {
-      const list = syms.slice(0, 5);
-      setPeers(list);
-      const qs = await Promise.all(list.map(s => API.getQuote(s).catch(() => null)));
-      const map = {};
-      list.forEach((s, i) => { if (qs[i]) map[s] = qs[i]; });
-      setQuotes(map);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [symbol]);
-
-  if (loading) return (
-    <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-      {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ minWidth: 120, height: 80, borderRadius: 14 }} />)}
-    </div>
-  );
-  if (!peers.length) return null;
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <p className="section-label">{t("analysis.similarCompanies")}</p>
-      <div className="peers-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: 10 }}>
-        {peers.map(s => {
-          const q = quotes[s];
-          const up = (q?.changePercentage || 0) >= 0;
-          return (
-            <div key={s} className="card card-hover" style={{ padding: "14px 16px" }} onClick={() => onSearch(s)}>
-              <p style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", marginBottom: 6 }}>{s}</p>
-              <p style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-.03em", marginBottom: 4 }}>
-                {q ? fmtPrice(q.price, q?.currency) : <span className="skeleton" style={{ width: 60, height: 18, display: "inline-block" }} />}
-              </p>
-              {q && <span className={`pill ${up ? "pill-green" : "pill-red"}`} style={{ fontSize: 11 }}>{fmt.pct(q.changePercentage)}</span>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 /* ─── AI Chatbot ──────────────────────────────────────────────────────────── */
@@ -1044,9 +995,12 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
                 <span className={`pill ${(q?.changePercentage || 0) >= 0 ? "pill-green" : "pill-red"}`} style={{ fontSize: 14, padding: "5px 13px", marginTop: 4, display: "inline-block" }}>{fmt.pct(q?.changePercentage)}</span>
                 {/* Pre-Market / After Hours extended session */}
                 {(() => {
-                  const ms = q?.marketState;
-                  const showPre = q?.preMarketPrice != null && (ms === 'PRE' || ms === 'CLOSED');
-                  const showPost = q?.postMarketPrice != null && (ms === 'POST' || ms === 'REGULAR');
+                  // Mutually exclusive ET windows: 4:00-9:30 → pre-market session, 16:00-4:00 → after-hours + overnight
+                  const etMin = getZonedMinutes(new Date(), 'America/New_York');
+                  const beforeOpen = etMin >= 4 * 60 && etMin < 9 * 60 + 30;
+                  const afterClose = etMin >= 16 * 60 || etMin < 4 * 60;
+                  const showPre = q?.preMarketPrice != null && beforeOpen;
+                  const showPost = q?.postMarketPrice != null && afterClose;
                   if (!showPre && !showPost) return null;
                   const label = showPre ? t("analysis.preMarket") : t("analysis.afterHours");
                   const price = showPre ? q.preMarketPrice : q.postMarketPrice;
@@ -1072,9 +1026,6 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
               </div>
             </div>
           </div>
-
-          {/* Similar companies — not applicable to commodities */}
-          {!isCommodityMode && <SimilarCompanies symbol={inp} onSearch={run} />}
 
           {/* Earnings calendar */}
           {!isCommodityMode && <EarningsSection earnings={earnings} />}
