@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API } from "../api.js";
+import { API, useLocalStorage } from "../api.js";
 import { useLang } from "../i18n.js";
 import { useToast } from "./ui/Toast.jsx";
 
@@ -31,7 +31,44 @@ function PasswordChecklist({ password }) {
   );
 }
 
-export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome }) {
+function ToggleSwitch({ on, onToggle }) {
+  return (
+    <button onClick={onToggle} style={{
+      width: 48, height: 27, borderRadius: 14, border: "none", cursor: "pointer",
+      background: on ? "var(--blue)" : "var(--surface2)",
+      position: "relative", transition: "background .2s", padding: 0, flexShrink: 0,
+    }}>
+      <span style={{
+        position: "absolute", top: 3, left: on ? 23 : 3,
+        width: 21, height: 21, borderRadius: "50%", background: on ? "#fff" : "var(--text3)",
+        transition: "left .2s",
+      }} />
+    </button>
+  );
+}
+
+function LangToggle({ lang, onSetLang }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {["it", "en"].map(l => (
+        <button key={l} onClick={() => onSetLang(l)} style={{
+          padding: "7px 16px",
+          borderRadius: 6, fontSize: 14, fontWeight: 700,
+          cursor: "pointer", border: "1px solid",
+          background: lang === l ? "var(--blue)" : "transparent",
+          color: lang === l ? "#fff" : "var(--text3)",
+          borderColor: lang === l ? "var(--blue)" : "var(--border)",
+          letterSpacing: ".04em", transition: "all .15s",
+          minWidth: 44,
+        }}>{l.toUpperCase()}</button>
+      ))}
+    </div>
+  );
+}
+
+const prefRow = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0" };
+
+export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome, lang, onSetLang, dark, onToggleDark, watchlist, positions }) {
   const { t } = useLang();
   const addToast = useToast();
 
@@ -51,7 +88,29 @@ export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome
   const [deleteText, setDeleteText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  const [notifEmailAlerts, setNotifEmailAlerts] = useLocalStorage("notif_email_alerts", false);
+
   const deleteWord = t("account.deleteConfirmWord");
+
+  const toggleNotifEmailAlerts = () => {
+    setNotifEmailAlerts(v => !v);
+    addToast(t("account.notifPrefSaved"));
+  };
+
+  const exportData = () => {
+    const data = {
+      account: { name: user?.name, email: user?.email, createdAt: user?.createdAt },
+      watchlist: (watchlist || []).map(w => ({ symbol: w.symbol, name: w.name })),
+      portfolio: (positions || []).map(p => ({ symbol: p.symbol, quantity: p.qty, buyPrice: p.avg, buyDate: p.buyDate })),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "investingview-data.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const saveProfile = async () => {
     if (!name.trim()) return;
@@ -132,6 +191,37 @@ export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome
         </button>
       </div>
 
+      {/* Account info */}
+      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <p className="section-label">{t("account.infoCard")}</p>
+        <div style={{ marginBottom: 14 }}>
+          <label style={fieldLabel}>{t("account.registeredLabel")}</label>
+          <p style={{ fontSize: 14, fontWeight: 500 }}>
+            {user?.createdAt ? new Date(user.createdAt).toLocaleDateString(lang === "en" ? "en-US" : "it-IT", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+          </p>
+        </div>
+        <div>
+          <label style={fieldLabel}>{t("account.currentEmailLabel")}</label>
+          <p style={{ fontSize: 14, fontWeight: 500 }}>{user?.email || "—"}</p>
+        </div>
+      </div>
+
+      {/* Preferences */}
+      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <p className="section-label">{t("account.preferencesCard")}</p>
+        <div style={{ ...prefRow, borderBottom: "1px solid var(--border2)" }}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t("account.languageLabel")}</span>
+          <LangToggle lang={lang} onSetLang={onSetLang} />
+        </div>
+        <div style={prefRow}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t("account.themeLabel")}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 13, color: "var(--text2)" }}>{dark ? t("account.themeDark") : t("account.themeLight")}</span>
+            <ToggleSwitch on={dark} onToggle={onToggleDark} />
+          </div>
+        </div>
+      </div>
+
       {/* Security */}
       <div className="card" style={{ padding: 24, marginBottom: 20 }}>
         <p className="section-label">{t("account.securityCard")}</p>
@@ -171,6 +261,34 @@ export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome
           <button className="btn btn-ghost" disabled={savingPw || !curPw || !newPw || !confirmPw} style={{ opacity: savingPw || !curPw || !newPw || !confirmPw ? .6 : 1, cursor: savingPw || !curPw || !newPw || !confirmPw ? "not-allowed" : "pointer" }} onClick={changePassword}>
             {savingPw ? t("account.saving") : t("account.changePasswordBtn")}
           </button>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <p className="section-label">{t("account.notificationsCard")}</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 500 }}>{t("account.emailAlertsLabel")}</p>
+            <p style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>{t("account.emailAlertsDesc")}</p>
+          </div>
+          <ToggleSwitch on={notifEmailAlerts} onToggle={toggleNotifEmailAlerts} />
+        </div>
+      </div>
+
+      {/* Export data */}
+      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <p className="section-label">{t("account.exportCard")}</p>
+        <p style={{ fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginBottom: 16 }}>{t("account.exportDesc")}</p>
+        <button className="btn btn-ghost" onClick={exportData}>{t("account.exportBtn")}</button>
+      </div>
+
+      {/* Privacy */}
+      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <p className="section-label">{t("account.privacyCard")}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <a href="#" onClick={e => e.preventDefault()} style={{ fontSize: 14, color: "var(--blue)", fontWeight: 500, textDecoration: "none" }}>{t("account.termsLink")}</a>
+          <a href="#" onClick={e => e.preventDefault()} style={{ fontSize: 14, color: "var(--blue)", fontWeight: 500, textDecoration: "none" }}>{t("account.privacyLink")}</a>
         </div>
       </div>
 

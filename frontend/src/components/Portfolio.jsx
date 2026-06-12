@@ -63,10 +63,18 @@ export default function Portfolio({ positions, setPositions }) {
     const s = n.symbol.toUpperCase();
     const q = await API.getQuote(s);
     const prof = await API.getProfile(s);
-    setPositions(p => [...p, { symbol: s, name: prof?.companyName || s, qty: +n.qty, avg: +n.avg, cur: q?.price || +n.avg, ch: q?.changePercentage, loading: false }]);
+    const buyDate = new Date().toISOString().split("T")[0];
+    const res = await API.addPosition({ symbol: s, quantity: +n.qty, buyPrice: +n.avg, buyDate }).catch(() => null);
+    setPositions(p => [...p, { id: res?.id, symbol: s, name: prof?.companyName || s, qty: +n.qty, avg: +n.avg, buyDate, cur: q?.price || +n.avg, ch: q?.changePercentage, loading: false }]);
     setN({ symbol: "", qty: "", avg: "" });
     setModal(false);
     addToast?.(t("portfolio.addedToast", { sym: s }));
+  };
+
+  const remove = i => {
+    const pos = positions[i];
+    if (pos.id != null) API.deletePosition(pos.id).catch(() => {});
+    setPositions(prev => prev.filter((_, j) => j !== i));
   };
 
   return (
@@ -120,7 +128,7 @@ export default function Portfolio({ positions, setPositions }) {
                   <p style={{ fontSize: 16, fontWeight: 700, color: pnl > 0 ? "var(--green)" : "var(--red)" }}>{pnl > 0 ? "+" : ""}${pnl.toFixed(2)}</p>
                   <p style={{ fontSize: 12, color: pnlP > 0 ? "var(--green)" : "var(--red)" }}>{fmt.pct(pnlP)}</p>
                 </div>
-                <button onClick={() => setPositions(p => p.filter((_, j) => j !== i))} style={{ padding: "6px 13px", borderRadius: 8, fontSize: 12, background: "var(--red-light)", color: "var(--red)", fontWeight: 600 }}>{t("common.remove")}</button>
+                <button onClick={() => remove(i)} style={{ padding: "6px 13px", borderRadius: 8, fontSize: 12, background: "var(--red-light)", color: "var(--red)", fontWeight: 600 }}>{t("common.remove")}</button>
               </div>
             );
           })}

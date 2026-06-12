@@ -1,28 +1,9 @@
 const express = require('express');
 const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
 const db      = require('../db');
+const { makeToken, authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
-const SECRET = process.env.JWT_SECRET || 'investingview-dev-secret-2026';
-
-function makeToken(userId) {
-  return jwt.sign({ id: userId }, SECRET, { expiresIn: '30d' });
-}
-
-// Requires a valid "Authorization: Bearer <token>" header; sets req.userId
-function authenticateToken(req, res, next) {
-  const header = req.headers['authorization'] || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: 'Token mancante.' });
-  try {
-    const payload = jwt.verify(token, SECRET);
-    req.userId = payload.id;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Sessione scaduta. Effettua nuovamente il login.' });
-  }
-}
 
 const PASSWORD_RE_UPPER   = /[A-Z]/;
 const PASSWORD_RE_SPECIAL = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
@@ -63,7 +44,7 @@ router.post('/register', async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt },
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -90,7 +71,7 @@ router.post('/login', async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: { id: user.id, name: user.name, email: user.email, createdAt: user.created_at },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -124,7 +105,7 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const finalName = newName || user.name;
     updateNameEmail.run(finalName, finalEmail, user.id);
 
-    res.json({ success: true, user: { id: user.id, name: finalName, email: finalEmail } });
+    res.json({ success: true, user: { id: user.id, name: finalName, email: finalEmail, createdAt: user.created_at } });
   } catch (err) {
     console.error('Update profile error:', err);
     res.status(500).json({ error: "Errore durante l'aggiornamento del profilo." });

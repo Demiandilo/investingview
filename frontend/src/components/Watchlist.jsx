@@ -4,7 +4,7 @@ import { Spinner } from "./ui/Spinner.jsx";
 import { useToast } from "./ui/Toast.jsx";
 import { useLang } from "../i18n.js";
 
-export default function Watchlist({ items, setItems, onAnalyze }) {
+export default function Watchlist({ items, onRemove, onAnalyze }) {
   const { t } = useLang();
   const [prices, setPrices] = useState({});
   const [editAlert, setEditAlert] = useState(null);
@@ -23,7 +23,7 @@ export default function Watchlist({ items, setItems, onAnalyze }) {
   }, [items]);
 
   const remove = sym => {
-    setItems(p => p.filter(w => w.symbol !== sym));
+    onRemove(sym);
     addToast?.(t("watchlist.addedToast", { sym }), "info");
   };
 

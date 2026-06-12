@@ -5,6 +5,7 @@ const rateLimit  = require('express-rate-limit');
 const compression = require('compression');
 const apiRoutes  = require('./routes/api');
 const authRoutes = require('./routes/auth');
+const userdataRoutes = require('./routes/userdata');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -26,9 +27,9 @@ app.use(cors({
 app.use(express.json());
 
 // Cache-Control headers — browser can reuse data briefly, reducing round-trips
-// Auth routes must never be cached
+// Auth and user-specific data routes must never be cached
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/auth')) {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/watchlist') || req.path.startsWith('/portfolio')) {
     res.set('Cache-Control', 'no-store');
   } else {
     res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
@@ -44,6 +45,7 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 app.use('/api/auth', authRoutes);
+app.use('/api', userdataRoutes);
 app.use('/api', apiRoutes);
 
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

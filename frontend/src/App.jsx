@@ -25,23 +25,13 @@ function PageLoader() {
   );
 }
 
-const INITIAL_POSITIONS = [
-  { symbol:"AAPL", name:"Apple Inc.",      qty:10, avg:170.50, cur:null, ch:null, loading:true },
-  { symbol:"MSFT", name:"Microsoft Corp.", qty:5,  avg:380.00, cur:null, ch:null, loading:true },
-];
-
-const DEFAULT_WATCHLIST = [
-  { symbol:"AAPL", name:"Apple Inc.",       price:189.30, change:0.48 },
-  { symbol:"MSFT", name:"Microsoft Corp.",  price:415.20, change:0.62 },
-];
-
 function AppInner() {
   const { lang, setLang } = useLang();
   const [user, setUser]           = useLocalStorage("investingview_user", null);
   const [page, setPage]           = useState("dashboard");
   const [activeSym, setActiveSym] = useState(null);
-  const [positions, setPositions] = useState(INITIAL_POSITIONS);
-  const [watchlist, setWatchlist] = useLocalStorage("watchlist_items", DEFAULT_WATCHLIST);
+  const [positions, setPositions] = useState([]);
+  const [watchlist, setWatchlist] = useState([]);
   const [dark, setDark]           = useLocalStorage("dark_mode", false);
   const [showSearch, setShowSearch] = useState(false);
   const addToast = useToast();
@@ -60,18 +50,49 @@ function AppInner() {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
-  // Load live prices for initial positions
+  // Load watchlist & portfolio from backend on login (replaces localStorage persistence)
   useEffect(() => {
     if (!user) return;
+    const token = localStorage.getItem("investingview_token");
+    if (!token) return;
+
+    (async () => {
+      const [wl, pf] = await Promise.all([
+        API.getWatchlist().catch(() => []),
+        API.getPortfolio().catch(() => []),
+      ]);
+
+      const hydratedWatchlist = await Promise.all((wl || []).map(async w => {
+        const q = await API.getQuote(w.symbol).catch(() => null);
+        return { symbol: w.symbol, name: q?.name || w.symbol, price: q?.price ?? null, change: q?.changePercentage ?? null };
+      }));
+      setWatchlist(hydratedWatchlist);
+
+      setPositions((pf || []).map(p => ({
+        id: p.id, symbol: p.symbol, name: p.symbol,
+        qty: p.quantity, avg: p.buyPrice, buyDate: p.buyDate,
+        cur: null, ch: null, loading: true,
+      })));
+    })();
+  }, [user?.id]);
+
+  // Load live prices + names for positions pending a quote
+  useEffect(() => {
     positions.forEach((p, i) => {
       if (!p.loading) return;
-      API.getQuote(p.symbol).then(q => {
-        if (q) setPositions(prev => { const x = [...prev]; x[i] = { ...x[i], cur: q.price || p.avg, ch: q.changePercentage, loading: false }; return x; });
-      }).catch(() => {
-        setPositions(prev => { const x = [...prev]; x[i] = { ...x[i], loading: false }; return x; });
+      Promise.all([
+        API.getQuote(p.symbol).catch(() => null),
+        API.getProfile(p.symbol).catch(() => null),
+      ]).then(([q, prof]) => {
+        setPositions(prev => {
+          if (!prev[i] || prev[i].symbol !== p.symbol) return prev;
+          const x = [...prev];
+          x[i] = { ...x[i], cur: q?.price ?? x[i].avg, ch: q?.changePercentage ?? null, name: prof?.companyName || x[i].name, loading: false };
+          return x;
+        });
       });
     });
-  }, [user]);
+  }, [positions]);
 
   const go = useCallback((p, sym = null) => {
     setPage(p);
@@ -93,10 +114,12 @@ function AppInner() {
 
   const onAddWatch = useCallback(it => {
     setWatchlist(p => p.find(w => w.symbol === it.symbol) ? p : [...p, it]);
+    API.addToWatchlist(it.symbol).catch(() => {});
   }, [setWatchlist]);
 
   const onRemoveWatch = useCallback(sym => {
     setWatchlist(p => p.filter(w => w.symbol !== sym));
+    API.removeFromWatchlist(sym).catch(() => {});
   }, [setWatchlist]);
 
   const handleLogout = useCallback(() => {
@@ -125,13 +148,9 @@ function AppInner() {
           page={page}
           onNav={p => go(p)}
           watchlistCount={watchlist.length}
-          dark={dark}
-          onToggleDark={() => setDark(d => !d)}
           onOpenSearch={() => setShowSearch(true)}
           user={user}
           onLogout={handleLogout}
-          lang={lang}
-          onSetLang={setLang}
         />
 
         <main className="main-content" style={{ marginLeft: isMobile ? 0 : 216, minHeight: "100vh" }}>
@@ -165,7 +184,7 @@ function AppInner() {
               {page === "watchlist" && (
                 <Watchlist
                   items={watchlist}
-                  setItems={setWatchlist}
+                  onRemove={onRemoveWatch}
                   onAnalyze={onSearch}
                 />
               )}
@@ -176,6 +195,12 @@ function AppInner() {
                   onUpdateUser={handleUpdateUser}
                   onLogout={handleLogout}
                   onGoHome={() => go("dashboard")}
+                  lang={lang}
+                  onSetLang={setLang}
+                  dark={dark}
+                  onToggleDark={() => setDark(d => !d)}
+                  watchlist={watchlist}
+                  positions={positions}
                 />
               )}
             </Suspense>
@@ -186,12 +211,8 @@ function AppInner() {
           page={page}
           onNav={p => go(p)}
           watchlistCount={watchlist.length}
-          dark={dark}
-          onToggleDark={() => setDark(d => !d)}
           user={user}
           onLogout={handleLogout}
-          lang={lang}
-          onSetLang={setLang}
         />
       </div>
 

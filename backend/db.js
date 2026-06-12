@@ -19,6 +19,27 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS watchlist (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id  TEXT NOT NULL,
+    symbol   TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    UNIQUE(user_id, symbol)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS portfolio (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   TEXT NOT NULL,
+    symbol    TEXT NOT NULL,
+    quantity  REAL NOT NULL,
+    buy_price REAL NOT NULL,
+    buy_date  TEXT NOT NULL
+  )
+`);
+
 // One-time import from the legacy users.json file (local dev only — gitignored, never deployed)
 const LEGACY_FILE = path.join(__dirname, 'users.json');
 const { n: userCount } = db.prepare('SELECT COUNT(*) AS n FROM users').get();

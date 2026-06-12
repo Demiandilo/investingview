@@ -103,6 +103,16 @@ export const API = {
   async updateProfile(payload)  { return await authFetch("/auth/profile",  "PUT",    payload); },
   async updatePassword(payload) { return await authFetch("/auth/password", "PUT",    payload); },
   async deleteAccount()         { return await authFetch("/auth/account",  "DELETE"); },
+
+  // Watchlist / Portfolio persistence
+  async getWatchlist()              { const d = await authFetch("/watchlist", "GET"); return Array.isArray(d) ? d : []; },
+  async addToWatchlist(symbol)      { return await authFetch("/watchlist", "POST", { symbol }); },
+  async removeFromWatchlist(symbol) { return await authFetch(`/watchlist/${encodeURIComponent(symbol)}`, "DELETE"); },
+
+  async getPortfolio()                  { const d = await authFetch("/portfolio", "GET"); return Array.isArray(d) ? d : []; },
+  async addPosition(payload)            { return await authFetch("/portfolio", "POST", payload); },
+  async updatePosition(id, payload)     { return await authFetch(`/portfolio/${id}`, "PUT", payload); },
+  async deletePosition(id)              { return await authFetch(`/portfolio/${id}`, "DELETE"); },
 };
 
 /* ─── Formatters ─────────────────────────────────────────────────────────── */

@@ -27,36 +27,10 @@ function NavIcon({ id, active, size = 22 }) {
   return icons[id] || null;
 }
 
-/* ─── Lang toggle ──────────────────────────────────────────────────────────── */
-function LangToggle({ lang, onSetLang, large = false }) {
-  return (
-    <div style={{ display: "flex", gap: 4 }}>
-      {["it", "en"].map(l => (
-        <button key={l} onClick={() => onSetLang(l)} style={{
-          padding: large ? "7px 16px" : "5px 10px",
-          borderRadius: 6, fontSize: large ? 14 : 11, fontWeight: 700,
-          cursor: "pointer", border: "1px solid",
-          background: lang === l ? "var(--blue)" : "transparent",
-          color: lang === l ? "#fff" : "var(--text3)",
-          borderColor: lang === l ? "var(--blue)" : "var(--border)",
-          letterSpacing: ".04em", transition: "all .15s",
-          minWidth: large ? 44 : undefined,
-        }}>{l.toUpperCase()}</button>
-      ))}
-    </div>
-  );
-}
-
 /* ─── Profile Drawer (mobile only) ────────────────────────────────────────── */
-function ProfileDrawer({ open, onClose, user, dark, onToggleDark, lang, onSetLang, onNav, onLogout }) {
+function ProfileDrawer({ open, onClose, user, onNav, onLogout }) {
   const { t } = useLang();
   if (!open) return null;
-
-  const row = {
-    display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "15px 0", borderBottom: "1px solid var(--border2)",
-  };
-  const rowLabel = { display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 500, color: "var(--text)" };
 
   return (
     <>
@@ -89,38 +63,6 @@ function ProfileDrawer({ open, onClose, user, dark, onToggleDark, lang, onSetLan
 
         {/* Settings */}
         <div>
-          {/* Dark / Light mode */}
-          <div style={row}>
-            <div style={rowLabel}>
-              {dark ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              )}
-              <span>{dark ? t("nav.lightMode") : t("nav.darkMode")}</span>
-            </div>
-            <button onClick={onToggleDark} style={{
-              width: 48, height: 27, borderRadius: 14, border: "none", cursor: "pointer",
-              background: dark ? "var(--blue)" : "var(--surface2)",
-              position: "relative", transition: "background .2s", padding: 0,
-            }}>
-              <span style={{
-                position: "absolute", top: 3, left: dark ? 23 : 3,
-                width: 21, height: 21, borderRadius: "50%", background: dark ? "#fff" : "var(--text3)",
-                transition: "left .2s",
-              }} />
-            </button>
-          </div>
-
-          {/* Language */}
-          <div style={row}>
-            <div style={rowLabel}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              <span>Lingua</span>
-            </div>
-            <LangToggle lang={lang} onSetLang={onSetLang} large />
-          </div>
-
           {/* Impostazioni Account */}
           <button onClick={() => { onNav("account"); onClose(); }} style={{
             width: "100%", display: "flex", alignItems: "center", gap: 12,
@@ -160,28 +102,19 @@ function ProfileDrawer({ open, onClose, user, dark, onToggleDark, lang, onSetLan
 }
 
 /* ─── Desktop Sidebar ──────────────────────────────────────────────────────── */
-export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpenSearch, user, onLogout, lang, onSetLang }) {
+export function Sidebar({ page, onNav, watchlistCount, onOpenSearch, user, onLogout }) {
   const { t } = useLang();
 
   return (
     <aside className="desktop-sidebar" style={{ width: 216, background: "var(--surface)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 100 }}>
       {/* Logo */}
       <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid var(--border2)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Logo size={32} />
-            <div>
-              <p style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>InvestingView</p>
-              <p style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.01em" }}>{t("nav.appTagline")}</p>
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <Logo size={32} />
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}>InvestingView</p>
+            <p style={{ fontSize: 10, color: "var(--text3)", letterSpacing: "0.01em" }}>{t("nav.appTagline")}</p>
           </div>
-          <button onClick={onToggleDark} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "var(--text2)" }} title={dark ? t("nav.lightMode") : t("nav.darkMode")}>
-            {dark ? (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            ) : (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            )}
-          </button>
         </div>
         <button onClick={onOpenSearch} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 10, background: "var(--surface2)", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text3)", fontSize: 13 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -205,19 +138,16 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
 
       {/* User + Logout */}
       <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border2)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 50, background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-              {(user?.name?.[0] || "U").toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "Utente"}</p>
-            </div>
-            <button onClick={() => onNav("account")} title={t("nav.account")} style={{ background: page === "account" ? "var(--blue-light)" : "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: page === "account" ? "var(--blue)" : "var(--text2)" }}>
-              <NavIcon id="settings" active={page === "account"} size={14} />
-            </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, marginBottom: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 50, background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            {(user?.name?.[0] || "U").toUpperCase()}
           </div>
-          <LangToggle lang={lang} onSetLang={onSetLang} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "Utente"}</p>
+          </div>
+          <button onClick={() => onNav("account")} title={t("nav.account")} style={{ background: page === "account" ? "var(--blue-light)" : "var(--surface2)", border: "1px solid var(--border)", borderRadius: 7, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: page === "account" ? "var(--blue)" : "var(--text2)" }}>
+            <NavIcon id="settings" active={page === "account"} size={14} />
+          </button>
         </div>
         <button onClick={onLogout} style={{ width: "100%", padding: "8px 12px", borderRadius: 9, background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text2)", fontSize: 13, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -229,7 +159,7 @@ export function Sidebar({ page, onNav, watchlistCount, dark, onToggleDark, onOpe
 }
 
 /* ─── Mobile Bottom Nav ────────────────────────────────────────────────────── */
-export function BottomNav({ page, onNav, watchlistCount, dark, onToggleDark, user, onLogout, lang, onSetLang }) {
+export function BottomNav({ page, onNav, watchlistCount, user, onLogout }) {
   const { t } = useLang();
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -279,10 +209,6 @@ export function BottomNav({ page, onNav, watchlistCount, dark, onToggleDark, use
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
         user={user}
-        dark={dark}
-        onToggleDark={onToggleDark}
-        lang={lang}
-        onSetLang={onSetLang}
         onNav={id => { onNav(id); setProfileOpen(false); }}
         onLogout={onLogout}
       />
