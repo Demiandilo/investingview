@@ -3,7 +3,8 @@ const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authenticateToken);
+router.use('/watchlist', authenticateToken);
+router.use('/portfolio', authenticateToken);
 
 // ─── Watchlist ────────────────────────────────────────────────────────────
 const getWatchlist    = db.prepare('SELECT symbol, added_at AS addedAt FROM watchlist WHERE user_id = ? ORDER BY added_at ASC');
