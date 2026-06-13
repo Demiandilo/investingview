@@ -7,6 +7,7 @@ import { SearchModal } from "./components/ui/SearchModal.jsx";
 import { Sidebar, BottomNav } from "./components/Sidebar.jsx";
 import { Skeleton } from "./components/ui/Spinner.jsx";
 import Auth from "./components/Auth.jsx";
+import { trackPageView, trackEvent } from "./analytics.js";
 
 // Dashboard loaded eagerly (first screen); everything else lazy-loaded on first visit
 import Dashboard from "./components/Dashboard.jsx";
@@ -49,6 +50,11 @@ function AppInner() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
+
+  // Track a page view every time the active page changes (incl. initial load)
+  useEffect(() => {
+    trackPageView(page);
+  }, [page]);
 
   // Load watchlist & portfolio from backend on login (replaces localStorage persistence)
   useEffect(() => {
@@ -105,6 +111,7 @@ function AppInner() {
     setActiveSym(s);
     setPage("analisi");
     window.scrollTo(0, 0);
+    trackEvent("search", "ricerca_titolo", s);
     try {
       const prev = JSON.parse(localStorage.getItem("recent_searches") || "[]");
       const next = [s, ...prev.filter(x => x !== s)].slice(0, 5);
@@ -115,6 +122,7 @@ function AppInner() {
   const onAddWatch = useCallback(it => {
     setWatchlist(p => p.find(w => w.symbol === it.symbol) ? p : [...p, it]);
     API.addToWatchlist(it.symbol).catch(() => {});
+    trackEvent("watchlist", "aggiungi_watchlist", it.symbol);
   }, [setWatchlist]);
 
   const onRemoveWatch = useCallback(sym => {

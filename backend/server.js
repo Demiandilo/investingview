@@ -6,6 +6,7 @@ const compression = require('compression');
 const apiRoutes  = require('./routes/api');
 const authRoutes = require('./routes/auth');
 const userdataRoutes = require('./routes/userdata');
+const adminRoutes = require('./routes/admin');
 const { cleanExpiredCache } = require('./cache');
 
 // Periodically purge expired cache entries (permanent entries, e.g. translations, are kept)
@@ -34,7 +35,7 @@ app.use(express.json());
 // Cache-Control headers — browser can reuse data briefly, reducing round-trips
 // Auth and user-specific data routes must never be cached
 app.use('/api', (req, res, next) => {
-  if (req.path.startsWith('/auth') || req.path.startsWith('/watchlist') || req.path.startsWith('/portfolio')) {
+  if (req.path.startsWith('/auth') || req.path.startsWith('/watchlist') || req.path.startsWith('/portfolio') || req.path.startsWith('/admin')) {
     res.set('Cache-Control', 'no-store');
   } else {
     res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
@@ -50,6 +51,7 @@ const limiter = rateLimit({
 app.use('/api', limiter);
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api', userdataRoutes);
 app.use('/api', apiRoutes);
 

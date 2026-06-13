@@ -102,6 +102,9 @@ export const API = {
   async updatePassword(payload) { return await authFetch("/auth/password", "PUT",    payload); },
   async deleteAccount()         { return await authFetch("/auth/account",  "DELETE"); },
 
+  // Admin-only stats (returns 403 for non-admin accounts)
+  async getAdminStats() { return await authFetch("/admin/stats", "GET"); },
+
   // Watchlist / Portfolio persistence
   async getWatchlist()              { const d = await authFetch("/watchlist", "GET"); return Array.isArray(d) ? d : []; },
   async addToWatchlist(symbol)      { return await authFetch("/watchlist", "POST", { symbol }); },

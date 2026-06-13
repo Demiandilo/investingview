@@ -1,7 +1,54 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { API, useLocalStorage } from "../api.js";
 import { useLang } from "../i18n.js";
 import { useToast } from "./ui/Toast.jsx";
+
+const ADMIN_EMAIL = "demianluglio@gmail.com";
+
+const statCard = { flex: "1 1 140px", padding: "18px 20px", borderRadius: 12, background: "var(--surface2)", border: "1px solid var(--border2)" };
+const statValue = { fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" };
+const statLabel = { fontSize: 12, color: "var(--text2)", fontWeight: 600, marginTop: 4 };
+
+/** Admin-only card: basic registration stats, fetched from /api/admin/stats. */
+function AdminStats() {
+  const { t } = useLang();
+  const [stats, setStats] = useState(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const res = await API.getAdminStats();
+      if (res?.error || res?.totalUsers == null) setError(true);
+      else setStats(res);
+    })();
+  }, []);
+
+  return (
+    <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+      <p className="section-label">{t("account.adminCard")}</p>
+      {error ? (
+        <p style={{ fontSize: 13, color: "var(--red)" }}>{t("account.adminError")}</p>
+      ) : !stats ? (
+        <p style={{ fontSize: 13, color: "var(--text2)" }}>{t("account.adminLoading")}</p>
+      ) : (
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={statCard}>
+            <div style={statValue}>{stats.totalUsers}</div>
+            <div style={statLabel}>{t("account.adminTotalUsers")}</div>
+          </div>
+          <div style={statCard}>
+            <div style={statValue}>{stats.newUsersLast7Days}</div>
+            <div style={statLabel}>{t("account.adminNew7d")}</div>
+          </div>
+          <div style={statCard}>
+            <div style={statValue}>{stats.newUsersLast30Days}</div>
+            <div style={statLabel}>{t("account.adminNew30d")}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PW_SPECIAL_RE = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/;
 const PW_UPPER_RE   = /[A-Z]/;
@@ -174,6 +221,9 @@ export default function AccountSettings({ user, onUpdateUser, onLogout, onGoHome
       </div>
 
       <h1 className="page-title">{t("account.title")}</h1>
+
+      {/* Admin-only stats */}
+      {user?.email === ADMIN_EMAIL && <AdminStats />}
 
       {/* Profile */}
       <div className="card" style={{ padding: 24, marginBottom: 20 }}>

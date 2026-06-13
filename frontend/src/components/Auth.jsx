@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLang } from "../i18n.js";
+import { trackEvent } from "../analytics.js";
 
 const BASE = (import.meta.env.VITE_API_URL || "http://localhost:3001") + "/api";
 async function apiPost(path, body) {
@@ -342,6 +343,7 @@ export default function Auth({ onAuth }) {
     setLoading(false);
     if (res?.success) {
       if (res.token) localStorage.setItem("investingview_token", res.token);
+      trackEvent("auth", "login", "success");
       onAuth(res.user);
     } else {
       setError(res?.error || "Errore di connessione. Assicurati che il backend sia avviato su porta 3001.");
@@ -356,6 +358,7 @@ export default function Auth({ onAuth }) {
     setLoading(false);
     if (res?.success) {
       if (res.token) localStorage.setItem("investingview_token", res.token);
+      trackEvent("auth", "registrazione_completata", "success");
       onAuth(res.user);
     } else {
       setError(res?.error || "Errore di connessione. Assicurati che il backend sia avviato su porta 3001.");
