@@ -246,9 +246,9 @@ const FEATURES = [
     desc: "Prezzi live al secondo da NYSE, NASDAQ, Borsa di Milano, Tokyo e 50+ mercati.",
   },
   {
-    icon: <svg {...SI}><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>,
-    title: "AI Analysis",
-    desc: "Analisi fondamentale e tecnica automatica con Gemini AI, in italiano.",
+    icon: <svg {...SI}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+    title: "Insider Trading",
+    desc: "Monitora acquisti e vendite di azioni da parte di amministratori e dirigenti.",
   },
   {
     icon: <svg {...SI}><path d="M4 22V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16"/><path d="M9 8h6M9 12h6M9 16h4"/><line x1="4" y1="22" x2="20" y2="22"/></svg>,

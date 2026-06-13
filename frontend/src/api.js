@@ -94,8 +94,6 @@ export const API = {
   async getAnalysts(sym)  { return await cachedGet(`/analysts/${sym}`,  3_600_000); },
   async getInsider(sym)   { return await cachedGet(`/insider/${sym}`,   3_600_000); },
   async getFearGreed()    { return await cachedGet('/feargreed',         900_000);  },
-  async aiAnalysis(sym, m) { return await post(`/analyze/${sym}`, { metrics: m }); },
-  async gemini(prompt)     { return await post("/gemini", { prompt }); },
   async translate(text)    { return await post("/translate", { text }); },
   async translateTitles(titles) { return await post("/translate-titles", { titles }); },
   async getStockNews(q)    { const d = await get(`/news/${encodeURIComponent(q)}`); return d?.articles || []; },

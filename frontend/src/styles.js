@@ -87,8 +87,6 @@ select.input { appearance: none; }
 .tip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color: var(--text); }
 .tip-wrap:hover .tip { opacity: 1; }
 .divider { height: 1px; background: var(--border); margin: 0 -20px; }
-.score-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-.score-fill { height: 100%; border-radius: 3px; transition: width .9s cubic-bezier(.22,1,.36,1); }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
 .data-table td { padding: 13px 16px; font-size: 14px; border-bottom: 1px solid var(--border2); font-variant-numeric: tabular-nums; }
@@ -104,9 +102,6 @@ select.input { appearance: none; }
 [data-theme="dark"] h2 { color: var(--text); }
 .section-label { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: flex-start; justify-content: center; z-index: 1000; backdrop-filter: blur(8px); padding-top: 80px; }
-.chat-bubble { max-width: 82%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.65; }
-.chat-user { background: var(--blue); color: #fff; border-bottom-right-radius: 4px; align-self: flex-end; }
-.chat-ai   { background: var(--surface2); color: var(--text); border-bottom-left-radius: 4px; align-self: flex-start; }
 `;
 
 export const RESP = `
@@ -127,11 +122,9 @@ export const RESP = `
   .metric-grid { grid-template-columns: repeat(2,1fr) !important; gap: 9px !important; }
   .pf-sum-grid { grid-template-columns: repeat(2,1fr) !important; gap: 9px !important; }
   .wl-grid { grid-template-columns: repeat(2,1fr) !important; gap: 9px !important; }
-  .ai-str-risk { grid-template-columns: 1fr !important; }
   .screener-filters { grid-template-columns: repeat(2,1fr) !important; }
   .company-header { flex-direction: column !important; }
   .company-price-block { text-align: left !important; }
-  .verdict-row { flex-direction: column !important; gap: 12px !important; }
   .tab-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .tab-wrap .tabs { min-width: max-content; width: auto; }
   .search-chips { flex-wrap: nowrap !important; overflow-x: auto; padding-bottom: 4px; }

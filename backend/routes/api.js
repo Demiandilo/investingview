@@ -1239,16 +1239,6 @@ router.post('/translate-titles', async (req, res) => {
   } catch { res.json({ titles: req.body.titles }); }
 });
 
-// ─── Gemini generic ───────────────────────────────────────────────────────────
-router.post('/gemini', async (req, res) => {
-  try {
-    const { prompt } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'prompt is required' });
-    const text = await callGemini(prompt, 10000);
-    res.json({ text });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 // ─── Short interest analysis ──────────────────────────────────────────────────
 router.post('/short/:symbol', async (req, res) => {
   try {
@@ -1446,49 +1436,6 @@ router.post('/sentiment/:symbol', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── AI Full Analysis ─────────────────────────────────────────────────────────
-router.post('/analyze/:symbol', async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const [quote, profile, ratiosRaw, kmRaw, growth] = await Promise.all([
-      cached(`quote_${symbol}`, () => fmp('/quote', { symbol })),
-      cached(`profile_${symbol}`, () => fmp('/profile', { symbol })),
-      fmp('/ratios-ttm', { symbol }),
-      fmp('/key-metrics-ttm', { symbol }),
-      cached(`growth_${symbol}`, () => fmp('/financial-growth', { symbol, limit: 3 })),
-    ]);
-    const q = quote[0] || {}, p = profile[0] || {}, r = ratiosRaw[0] || {}, k = kmRaw[0] || {}, g = growth[0] || {};
-    const pe       = r.priceToEarningsRatioTTM?.toFixed(2) || 'N/D';
-    const pb       = r.priceToBookRatioTTM?.toFixed(2) || 'N/D';
-    const roe      = k.returnOnEquityTTM != null ? (k.returnOnEquityTTM * 100).toFixed(1) + '%' : 'N/D';
-    const margin   = r.netProfitMarginTTM != null ? (r.netProfitMarginTTM * 100).toFixed(1) + '%' : 'N/D';
-    const debtEq   = r.debtToEquityRatioTTM?.toFixed(2) || 'N/D';
-    const revGrowth = g.revenueGrowth != null ? (g.revenueGrowth * 100).toFixed(1) + '%' : 'N/D';
-    const prompt = `Fai un'analisi fondamentale completa di ${symbol} (${p.companyName}) in italiano.
-Dati chiave:
-- Prezzo: $${q.price}, 52W: $${q.yearLow}–$${q.yearHigh}
-- Market Cap: $${p.marketCap ? (p.marketCap / 1e9).toFixed(1) : '?'}B, Settore: ${p.sector || 'N/D'}
-- P/E: ${pe}, P/B: ${pb}, ROE: ${roe}, Margine: ${margin}
-- Rev Growth: ${revGrowth}, Debt/Equity: ${debtEq}
-Rispondi SOLO in JSON (niente markdown):
-{"verdict":"Forte Acquisto|Acquisto|Neutro|Vendita|Forte Vendita","score":<0-100>,"orizzonte":"Breve|Medio|Lungo termine","target_price":<numero|null>,"punti_forza":["...","...","..."],"rischi":["...","...","..."],"analisi_fondamentale":"...","analisi_tecnica":"..."}`;
-    let aiData;
-    try {
-      const raw = await callGemini(prompt, 15000);
-      try { aiData = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()); }
-      catch { aiData = { verdict: 'Neutro', score: 50, punti_forza: [], rischi: [], analisi_fondamentale: raw }; }
-    } catch {
-      aiData = {
-        verdict: 'N/D', score: null, orizzonte: null, target_price: null,
-        punti_forza: [], rischi: [],
-        analisi_fondamentale: 'Analisi AI temporaneamente non disponibile',
-        analisi_tecnica: '',
-      };
-    }
-    res.json(aiData);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 // ─── Earnings Calendar ────────────────────────────────────────────────────────
 router.get('/earnings/:symbol', async (req, res) => {
   try {
@@ -1634,40 +1581,63 @@ router.get('/analysts/:symbol', async (req, res) => {
 });
 
 // ─── Insider Trading ──────────────────────────────────────────────────────────
+// Classify a Yahoo `transactionText` (e.g. "Sale at price 311.02 per share.")
+// into a normalized type + buy/sell direction + price-per-share.
+function classifyInsiderTransaction(text) {
+  const t = text || '';
+  let type = 'Other', isBuy = null;
+  if (/gift/i.test(t))                  { type = 'Stock Gift';     isBuy = null;  }
+  else if (/tax/i.test(t))              { type = 'Tax';            isBuy = false; }
+  else if (/purchase/i.test(t))         { type = 'Purchase';       isBuy = true;  }
+  else if (/sale/i.test(t))             { type = 'Sale';           isBuy = false; }
+  else if (/exercise|conversion/i.test(t)) { type = 'Option Exercise'; isBuy = true; }
+  else if (/award|grant/i.test(t))      { type = 'Award';          isBuy = null;  }
+
+  let price = null;
+  const m = t.match(/at price\s+\$?([\d,]+\.?\d*)(?:\s*-\s*\$?([\d,]+\.?\d*))?\s*per share/i);
+  if (m) {
+    const p1 = parseFloat(m[1].replace(/,/g, ''));
+    const p2 = m[2] != null ? parseFloat(m[2].replace(/,/g, '')) : null;
+    const avg = p2 != null ? (p1 + p2) / 2 : p1;
+    if (avg > 0) price = avg;
+  }
+  return { type, isBuy, price };
+}
+
+// Convert ALL-CAPS SEC filer names (e.g. "COOK TIMOTHY D") to readable form.
+function toTitleCase(name) {
+  if (!name) return null;
+  return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
 router.get('/insider/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const data = await cachedLong(`insider_${symbol}`, async () => {
-      // 1. FMP /api/v3/insider-trading
-      const fmpData = await axios.get('https://financialmodelingprep.com/api/v3/insider-trading', {
-        params: { symbol, limit: 10, apikey: FMP_KEY },
-        timeout: 8000,
-      }).then(r => r.data).catch(() => null);
+      const yRes = await yf.quoteSummary(symbol, { modules: ['insiderTransactions', 'price'] }).catch(() => null);
+      const currency = yRes?.price?.currency ?? null;
+      const transactions = yRes?.insiderTransactions?.transactions || [];
 
-      if (Array.isArray(fmpData) && fmpData.length > 0) {
-        return fmpData.slice(0, 10).map(t => ({
-          name:   t.reportingName  || t.reportingOwner || 'N/D',
-          role:   t.typeOfOwner    || '',
-          type:   t.transactionType || '',
-          shares: t.securitiesTransacted ?? null,
-          price:  t.price ?? null,
-          value:  (t.securitiesTransacted && t.price)
-            ? Math.round(t.securitiesTransacted * t.price) : null,
-          date:   t.transactionDate || t.filingDate || null,
-        }));
-      }
-
-      // 2. Yahoo Finance insiderTransactions fallback
-      const yRes = await yf.quoteSummary(symbol, { modules: ['insiderTransactions'] }).catch(() => null);
-      return (yRes?.insiderTransactions?.transactions || []).slice(0, 10).map(t => ({
-        name:   t.filerName       || 'N/D',
-        role:   t.filerRelation   || '',
-        type:   t.transactionDescription || '',
-        shares: t.shares  ?? null,
-        price:  null,
-        value:  t.value   ?? null,
-        date:   t.startDate instanceof Date ? t.startDate.toISOString().split('T')[0] : null,
-      }));
+      return transactions
+        .map(t => {
+          const { type, isBuy, price } = classifyInsiderTransaction(t.transactionText);
+          const shares = t.shares ?? null;
+          let value = t.value ?? ((shares != null && price != null) ? Math.round(shares * price) : null);
+          if (value === 0) value = null;
+          return {
+            name:     toTitleCase(t.filerName),
+            role:     t.filerRelation || null,
+            type,
+            isBuy,
+            shares,
+            price,
+            value,
+            currency,
+            date:     t.startDate instanceof Date ? t.startDate.toISOString().split('T')[0] : null,
+          };
+        })
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
     });
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }

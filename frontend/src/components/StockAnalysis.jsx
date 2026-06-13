@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo, useRef, memo, Component } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, Component } from "react";
 import { API, fmt, fmtPrice, fmtMoneyShort, M, calcRSI, useLocalStorage, getZonedMinutes } from "../api.js";
-import { MetricTile, VerdictBadge } from "./ui/MetricTile.jsx";
+import { MetricTile } from "./ui/MetricTile.jsx";
 import { Spinner, Skeleton } from "./ui/Spinner.jsx";
 import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart, FinancialHistoryChart } from "./ui/Charts.jsx";
 import { useToast } from "./ui/Toast.jsx";
@@ -58,64 +58,6 @@ function commodityLabelKey(sym) {
   if (/^[A-Z]+-USD$/.test(sym)) return 'crypto';
   if (/^[A-Z]{1,4}=F$/.test(sym)) return 'futures';
   return 'etf';
-}
-
-/* ─── AI Chatbot ──────────────────────────────────────────────────────────── */
-function AIChatbot({ symbol, companyName, q, rat }) {
-  const { t, lang } = useLang();
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const bottomRef = useRef(null);
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  const send = async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput("");
-    setSending(true);
-    setMessages(m => [...m, { role: "user", text }]);
-    const ctx = lang === "en"
-      ? `Stock: ${symbol} (${companyName || symbol}). Price: $${q?.price || "N/A"}. P/E: ${rat?.peRatioTTM?.toFixed(1) || "N/A"}. ROE: ${rat?.returnOnEquityTTM ? (rat.returnOnEquityTTM * 100).toFixed(1) + "%" : "N/A"}.`
-      : `Titolo: ${symbol} (${companyName || symbol}). Prezzo: $${q?.price || "N/D"}. P/E: ${rat?.peRatioTTM?.toFixed(1) || "N/D"}. ROE: ${rat?.returnOnEquityTTM ? (rat.returnOnEquityTTM * 100).toFixed(1) + "%" : "N/D"}.`;
-    const instruction = lang === "en"
-      ? `${ctx}\n\nUser question: ${text}\n\nAnswer concisely and helpfully for an investor.`
-      : `${ctx}\n\nDomanda dell'utente: ${text}\n\nRispondi in italiano, in modo conciso e utile per un investitore.`;
-    const result = await API.gemini(instruction);
-    setMessages(m => [...m, { role: "ai", text: result?.text || t("common.noData") }]);
-    setSending(false);
-  };
-
-  return (
-    <div className="card" style={{ padding: 20, marginTop: 16 }}>
-      <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>{t("analysis.ai.chatTitle", { sym: symbol })}</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 280, overflowY: "auto", marginBottom: 12 }}>
-        {messages.length === 0 && (
-          <p style={{ fontSize: 13, color: "var(--text3)", textAlign: "center", padding: "20px 0" }}>{t("analysis.ai.chatPlaceholder", { name: companyName || symbol })}</p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-            <div className={`chat-bubble ${m.role === "user" ? "chat-user" : "chat-ai"}`}>{m.text}</div>
-          </div>
-        ))}
-        {sending && (
-          <div style={{ display: "flex" }}>
-            <div className="chat-bubble chat-ai" style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              {[0, .2, .4].map(d => <span key={d} className="pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text3)", display: "inline-block", animationDelay: `${d}s` }} />)}
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input className="input" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder={t("analysis.ai.chatInputPlaceholder")} style={{ fontSize: 14 }} />
-        <button className="btn btn-blue" onClick={send} disabled={sending} style={{ minWidth: 80, padding: "13px 16px" }}>
-          {sending ? <Spinner size={15} /> : t("common.send")}
-        </button>
-      </div>
-    </div>
-  );
 }
 
 /* ─── Moving Averages Analysis ───────────────────────────────────────────── */
@@ -735,11 +677,6 @@ function AnalystsCard({ analysts, price }) {
 function InsiderTab({ insider }) {
   const { t, lang } = useLang();
 
-  const isTxBuy = tx => {
-    const ty = (tx.type || "").toLowerCase();
-    return ty.includes("buy") || ty.includes("purchase") || ty.includes("acquis") || ty.includes("p-purchase");
-  };
-
   if (!insider || insider.length === 0) {
     return (
       <div className="card fade" style={{ padding: "48px", textAlign: "center" }}>
@@ -749,6 +686,8 @@ function InsiderTab({ insider }) {
       </div>
     );
   }
+
+  const typeLabels = t("analysis.insider.types") || {};
 
   return (
     <div className="fade">
@@ -761,24 +700,30 @@ function InsiderTab({ insider }) {
       </div>
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         {insider.map((tx, i) => {
-          const buy = isTxBuy(tx);
+          const buy = !!tx.isBuy;
+          const typeLabel = typeLabels[tx.type] || tx.type || "—";
+          const dateLabel = tx.date
+            ? new Date(tx.date).toLocaleDateString(lang === "en" ? "en-US" : "it-IT", { day: "numeric", month: "long", year: "numeric" })
+            : "—";
           return (
             <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "14px 18px", borderBottom: i < insider.length - 1 ? "1px solid var(--border2)" : "none" }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, background: buy ? "rgba(52,199,89,.12)" : "rgba(255,59,48,.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, color: buy ? "var(--green)" : "var(--red)" }}>
                 {buy ? "↑" : "↓"}
               </div>
-              <div style={{ flex: 1, minWidth: 130 }}>
-                <p style={{ fontWeight: 700, fontSize: 13 }}>{tx.name}</p>
-                <p style={{ fontSize: 11, color: "var(--text3)" }}>{tx.role}</p>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <p style={{ fontWeight: 700, fontSize: 13 }}>{tx.name || "—"}</p>
+                <p style={{ fontSize: 11, color: "var(--text3)" }}>{tx.role || "—"}</p>
               </div>
-              <div style={{ flex: 1, minWidth: 100 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: buy ? "var(--green)" : "var(--red)" }}>{tx.type}</p>
-                {tx.shares != null && <p style={{ fontSize: 11, color: "var(--text3)" }}>{fmt.num(tx.shares)} {t("analysis.insider.shares")}</p>}
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: buy ? "var(--green)" : "var(--red)" }}>{typeLabel}</p>
+                <p style={{ fontSize: 11, color: "var(--text3)" }}>{dateLabel}</p>
               </div>
-              <div style={{ textAlign: "right" }}>
-                {tx.value != null && <p style={{ fontSize: 14, fontWeight: 700 }}>{fmt.bn(tx.value)}</p>}
-                {tx.price != null && <p style={{ fontSize: 11, color: "var(--text3)" }}>@ ${Number(tx.price).toFixed(2)}</p>}
-                {tx.date && <p style={{ fontSize: 11, color: "var(--text3)" }}>{new Date(tx.date).toLocaleDateString(lang === "en" ? "en-US" : "it-IT", { day: "2-digit", month: "short" })}</p>}
+              <div style={{ flex: 1, minWidth: 110 }}>
+                <p style={{ fontSize: 12, color: "var(--text2)" }}>{tx.shares != null ? `${fmt.num(tx.shares)} ${t("analysis.insider.shares")}` : "—"}</p>
+                <p style={{ fontSize: 11, color: "var(--text3)" }}>{t("analysis.insider.pricePerShare")}: {fmtPrice(tx.price, tx.currency)}</p>
+              </div>
+              <div style={{ textAlign: "right", minWidth: 90 }}>
+                <p style={{ fontSize: 14, fontWeight: 700 }}>{tx.value != null ? fmtMoneyShort(tx.value, tx.currency) : "—"}</p>
               </div>
             </div>
           );
@@ -798,7 +743,6 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
   const [hist, setHist] = useState([]);
   const [shortD, setShortD] = useState(null);
   const [sentD, setSentD] = useState(null);
-  const [aiD, setAiD] = useState(null);
   const [earnings, setEarnings] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [analysts, setAnalysts] = useState(null);
@@ -812,7 +756,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
 
   const run = useCallback(async input => {
     if (!input) return;
-    setLoading(true); setData(null); setHist([]); setShortD(null); setSentD(null); setAiD(null); setEarnings(null); setFinancials(null); setAnalysts(null); setInsider(null); setTab("fondamentali");
+    setLoading(true); setData(null); setHist([]); setShortD(null); setSentD(null); setEarnings(null); setFinancials(null); setAnalysts(null); setInsider(null); setTab("fondamentali");
     setTranslatedDesc(null); setDescLoading(false); setTranslatedTitles(null); setTitlesLoading(false);
     setPhase(t("analysis.loading.searching"));
     const s = await API.resolveSymbol(input);
@@ -825,13 +769,8 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
     setData({ q, prof, rat, growth });
     setHist(Array.isArray(h) ? h : []);
     if (!isCommodity(s) && prof?.companyName) {
-      setPhase(t("analysis.loading.ai"));
-      const eg = growth?.epsgrowth ? +(growth.epsgrowth * 100).toFixed(1) : null;
-      const pe = rat?.peRatioTTM;
-      const peg = rat?.pegRatioTTM ?? ((pe && eg && eg > 0) ? +(pe / eg).toFixed(2) : null);
-      const metrics = { prezzo: q?.price, pe, peg, roe: rat?.returnOnEquityTTM ? +(rat.returnOnEquityTTM * 100).toFixed(1) : null, debtEquity: rat?.debtEquityRatioTTM, dividendYield: rat?.dividendYielTTM ? +(rat.dividendYielTTM * 100).toFixed(2) : null, marketCap: prof?.marketCap, settore: prof?.sector };
-      const [ai, sent, sh, earningsRes, financialsRes, analystsRes, insiderRes] = await Promise.all([
-        API.aiAnalysis(s, metrics).catch(() => null),
+      setPhase(t("analysis.loading.extra"));
+      const [sent, sh, earningsRes, financialsRes, analystsRes, insiderRes] = await Promise.all([
         API.sentiment(s, prof?.companyName).catch(() => null),
         API.shortInterest(s).catch(() => null),
         API.getEarnings(s).catch(() => null),
@@ -839,7 +778,6 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
         API.getAnalysts(s).catch(() => null),
         API.getInsider(s).catch(() => null),
       ]);
-      setAiD(ai);
       setSentD(sent || { _noData: true, label: "N/D", score: 0, positive: 0, neutral: 0, negative: 0, articles: [], summary: "" });
       setShortD(sh || { _noData: true, shortInterest: null, daysToCover: null, sharesShorted: null, trend: null });
       setEarnings(earningsRes);
@@ -907,7 +845,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
         { id: "fondamentali", l: tabDefs.fondamentali }, { id: "tecnica", l: tabDefs.tecnica },
         { id: "confronto", l: tabDefs.confronto }, { id: "dividendi", l: tabDefs.dividendi },
         { id: "insider", l: tabDefs.insider },
-        { id: "sentiment", l: tabDefs.sentiment }, { id: "short", l: tabDefs.short }, { id: "ai", l: tabDefs.ai },
+        { id: "sentiment", l: tabDefs.sentiment }, { id: "short", l: tabDefs.short },
       ];
 
   const isInWatchlist = !!watchlist?.find(w => w.symbol === inp);
@@ -1199,71 +1137,6 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
                   <MetricTile label={t("analysis.metrics.sharesShorted")} value={shortD.sharesShorted != null ? `${shortD.sharesShorted}M` : "—"} tip={t("analysis.tips.shortShares")} />
                   <MetricTile label={t("analysis.metrics.shortTrend")}    value={shortD.trend ? t("analysis.short.trendLabels")[shortD.trend] || shortD.trend : "—"} eval={shortD.trend ? { c: shortD.trend === "diminuendo" ? "green" : shortD.trend === "aumentando" ? "red" : "gold", t: t("analysis.short.trendEvals")[shortD.trend] || shortD.trend } : null} tip={t("analysis.tips.shortTrend")} />
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab: AI */}
-          {tab === "ai" && (
-            <div className="fade">
-              {!aiD ? <div style={{ textAlign: "center", padding: "48px" }}><Spinner size={28} /><p style={{ marginTop: 12, color: "var(--text2)" }}>{t("analysis.ai.loading")}</p></div> : aiD.verdict === 'N/D' ? (
-                <div className="card" style={{ padding: "48px", textAlign: "center" }}>
-                  <div style={{ marginBottom: 14 }}>
-                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>
-                  </div>
-                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{t("analysis.ai.unavailable")}</p>
-                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => { setAiD(null); API.aiAnalysis(inp, {}).then(setAiD).catch(() => setAiD({ verdict: 'N/D', score: null, orizzonte: null, target_price: null, punti_forza: [], rischi: [], analisi_fondamentale: 'Analisi AI temporaneamente non disponibile', analisi_tecnica: '' })); }}>{t("common.retry")}</button>
-                </div>
-              ) : (
-                <>
-                  <div className="card" style={{ padding: "28px", marginBottom: 16 }}>
-                    <div className="verdict-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20, marginBottom: 24 }}>
-                      <div>
-                        <p style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", marginBottom: 10 }}>{t("analysis.ai.verdict")}</p>
-                        <VerdictBadge verdict={aiD.verdict} />
-                        {aiD.orizzonte && <p style={{ fontSize: 13, color: "var(--text2)", marginTop: 8 }}>{t("analysis.ai.horizon")}: <strong>{aiD.orizzonte}</strong></p>}
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <p style={{ fontSize: 12, color: "var(--text2)", marginBottom: 4 }}>{t("analysis.ai.score")}</p>
-                        <p style={{ fontSize: 52, fontWeight: 800, letterSpacing: "-.05em", color: aiD.score > 60 ? "var(--green)" : aiD.score < 40 ? "var(--red)" : "var(--gold)" }}>{aiD.score}<span style={{ fontSize: 20, color: "var(--text3)" }}>/100</span></p>
-                      </div>
-                    </div>
-                    <div className="score-track"><div className="score-fill" style={{ width: `${aiD.score}%`, background: aiD.score > 60 ? "var(--green)" : aiD.score < 40 ? "var(--red)" : "var(--gold)" }} /></div>
-                    {aiD.target_price && (
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 16px", background: "var(--surface2)", borderRadius: 12, marginTop: 16 }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, display:"flex", alignItems:"center", gap:6 }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-                          {t("analysis.ai.targetPrice")}
-                        </span>
-                        <span style={{ fontSize: 18, fontWeight: 700, color: aiD.target_price > (q?.price || 0) ? "var(--green)" : "var(--red)" }}>{fmtPrice(aiD.target_price, q?.currency)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="ai-str-risk" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                    <div className="card" style={{ padding: "20px" }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--green)", marginBottom: 14 }}>✓ {t("analysis.ai.strengths")}</p>
-                      {aiD.punti_forza?.map((pt, i) => <div key={i} style={{ fontSize: 13, color: "var(--text2)", padding: "8px 0", borderBottom: i < aiD.punti_forza.length - 1 ? "1px solid var(--border2)" : "none", lineHeight: 1.6 }}>{pt}</div>)}
-                    </div>
-                    <div className="card" style={{ padding: "20px" }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: "var(--red)", marginBottom: 14, display:"flex", alignItems:"center", gap:5 }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        {t("analysis.ai.risks")}
-                      </p>
-                      {aiD.rischi?.map((r, i) => <div key={i} style={{ fontSize: 13, color: "var(--text2)", padding: "8px 0", borderBottom: i < aiD.rischi.length - 1 ? "1px solid var(--border2)" : "none", lineHeight: 1.6 }}>{r}</div>)}
-                    </div>
-                  </div>
-                  {[{ label: t("analysis.ai.fundamentals"), v: aiD.analisi_fondamentale }, { label: t("analysis.ai.technical"), v: aiD.analisi_tecnica }].filter(x => x.v).map(({ label, v }, i) => (
-                    <div key={i} className="card" style={{ padding: "20px", marginBottom: 12 }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{label}</p>
-                      <p style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.8 }}>{v}</p>
-                    </div>
-                  ))}
-                  <AIChatbot symbol={inp} companyName={prof?.companyName} q={q} rat={rat} />
-                  <div style={{ padding: "14px 18px", background: "var(--gold-light)", borderRadius: 12, fontSize: 13, color: "var(--text2)", lineHeight: 1.6, marginTop: 16, display:"flex", alignItems:"center", gap:8 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    {t("analysis.ai.disclaimer")}
-                  </div>
-                </>
               )}
             </div>
           )}
