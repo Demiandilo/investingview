@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const NodeCache = require('node-cache');
 const { default: YahooFinance } = require('yahoo-finance2');
+const { cacheGet, cacheSet, cachedDB, translateKey } = require('../cache');
 
 const router = express.Router();
 const cache = new NodeCache({ stdTTL: 300 });
@@ -475,7 +476,7 @@ const STATIC_POOL = [
 router.get('/quote/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cached(`quote_${symbol}`, async () => {
+    const data = await cachedDB(`quote:${symbol}`, async () => {
       // 1. Try FMP (has priceAvg50/200 etc. for US stocks)
       const fmpData = await fmp('/quote', { symbol }).catch(() => null);
       if (Array.isArray(fmpData) && fmpData[0]?.price) {
@@ -512,7 +513,7 @@ router.get('/quote/:symbol', async (req, res) => {
 router.get('/profile/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cached(`profile_${symbol}`, async () => {
+    const data = await cachedDB(`profile:${symbol}`, async () => {
       // For commodity futures/crypto/indices, assetProfile is empty — use quote only
       if (isCommoditySymbol(symbol)) {
         const q = await yf.quote(symbol).catch(() => null);
@@ -557,7 +558,7 @@ router.get('/profile/:symbol', async (req, res) => {
       const yData = await yahooProfile(symbol).catch(() => []);
       if (yData.length) return yData;
       return [];
-    });
+    }, 86400); // 24h TTL — company profile rarely changes
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -646,13 +647,13 @@ router.get('/history/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const { from, to } = req.query;
-    const data = await cached(`history_${symbol}_${from}_${to}`, async () => {
+    const data = await cachedDB(`history:${symbol}:${from}:${to}`, async () => {
       // 1. Yahoo Finance — primary (OHLCV, all markets, free)
       const yData = await yahooHistory(symbol, from, to).catch(() => null);
       if (yData && yData.length > 0) return yData;
       // 2. FMP light — fallback (close only, US-heavy)
       return await fmp('/historical-price-eod/light', { symbol, from, to }).catch(() => []);
-    });
+    }, 3600); // 1h TTL
     res.json(data || []);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1066,7 +1067,7 @@ router.get('/rsi/:symbol', async (req, res) => {
 router.get('/technical-analysis/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cached(`techan_${symbol}`, async () => {
+    const data = await cachedDB(`techan:${symbol}`, async () => {
       const from = new Date(Date.now() - 185 * 86400000).toISOString().split('T')[0];
       const history = await yahooHistory(symbol, from, null).catch(() => []);
       const candles = [...history].reverse() // oldest -> newest
@@ -1118,7 +1119,7 @@ router.get('/technical-analysis/:symbol', async (req, res) => {
         resistances,
         pattern,
       };
-    }, 1800); // 30-min TTL
+    }, 3600); // 1h TTL
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1216,9 +1217,14 @@ router.post('/translate', async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.json({ translated: text });
+    const key = translateKey(text, 'it');
+    const hit = cacheGet(key);
+    if (hit !== undefined) return res.json({ translated: hit });
     const prompt = `Traduci in italiano questo testo. Mantieni nomi propri, sigle e ticker invariati. Rispondi SOLO con il testo tradotto, senza spiegazioni:\n${text.slice(0, 500)}`;
     const translated = await callGemini(prompt, 12000);
-    res.json({ translated: translated.trim() || text });
+    const result = translated.trim() || text;
+    cacheSet(key, result); // permanent — translations never change
+    res.json({ translated: result });
   } catch { res.json({ translated: req.body.text }); }
 });
 
@@ -1227,15 +1233,29 @@ router.post('/translate-titles', async (req, res) => {
   try {
     const { titles } = req.body;
     if (!titles?.length) return res.json({ titles });
-    const numbered = titles.map((t, i) => `${i + 1}. ${t}`).join('\n');
-    const prompt = `Traduci in italiano questi titoli di notizie finanziarie. Mantieni nomi propri, sigle, ticker e cifre invariati. Rispondi SOLO con i titoli tradotti numerati, uno per riga:\n${numbered}`;
-    const raw = await callGemini(prompt, 15000);
-    const lines = raw.trim().split('\n').filter(l => /^\d+\./.test(l.trim()));
-    const translated = titles.map((orig, i) => {
-      const match = lines.find(l => l.trim().startsWith(`${i + 1}.`));
-      return match ? match.replace(/^\d+\.\s*/, '').trim() : orig;
+
+    const results = new Array(titles.length);
+    const pending = []; // { index, title }
+    titles.forEach((title, i) => {
+      const hit = cacheGet(translateKey(title, 'it'));
+      if (hit !== undefined) results[i] = hit;
+      else pending.push({ index: i, title });
     });
-    res.json({ titles: translated });
+
+    if (pending.length > 0) {
+      const numbered = pending.map((p, i) => `${i + 1}. ${p.title}`).join('\n');
+      const prompt = `Traduci in italiano questi titoli di notizie finanziarie. Mantieni nomi propri, sigle, ticker e cifre invariati. Rispondi SOLO con i titoli tradotti numerati, uno per riga:\n${numbered}`;
+      const raw = await callGemini(prompt, 15000);
+      const lines = raw.trim().split('\n').filter(l => /^\d+\./.test(l.trim()));
+      pending.forEach((p, i) => {
+        const match = lines.find(l => l.trim().startsWith(`${i + 1}.`));
+        const translated = match ? match.replace(/^\d+\.\s*/, '').trim() : p.title;
+        results[p.index] = translated;
+        cacheSet(translateKey(p.title, 'it'), translated); // permanent
+      });
+    }
+
+    res.json({ titles: results });
   } catch { res.json({ titles: req.body.titles }); }
 });
 
@@ -1345,94 +1365,98 @@ router.post('/sentiment/:symbol', async (req, res) => {
     const { symbol } = req.params;
     const { companyName } = req.body || {};
 
-    const isCom = isCommoditySymbol(symbol);
-    const comNewsQ = COMMODITY_NEWS_QUERY[symbol];
-    const keywords = isCom ? [] : buildKeywords(symbol, companyName);
+    const data = await cachedDB(`sentiment:${symbol}`, async () => {
+      const isCom = isCommoditySymbol(symbol);
+      const comNewsQ = COMMODITY_NEWS_QUERY[symbol];
+      const keywords = isCom ? [] : buildKeywords(symbol, companyName);
 
-    // ── 1. Yahoo Finance news — primary source, pre-filtered per symbol ──────
-    const toArticle = n => ({
-      title:       n.title,
-      url:         n.link,
-      publishedAt: n.providerPublishTime
-        ? new Date(n.providerPublishTime * 1000).toISOString()
-        : new Date().toISOString(),
-      source: { name: n.publisher || 'Yahoo Finance' },
-    });
+      // ── 1. Yahoo Finance news — primary source, pre-filtered per symbol ──────
+      const toArticle = n => ({
+        title:       n.title,
+        url:         n.link,
+        publishedAt: n.providerPublishTime
+          ? new Date(n.providerPublishTime * 1000).toISOString()
+          : new Date().toISOString(),
+        source: { name: n.publisher || 'Yahoo Finance' },
+      });
 
-    let yahooArticles = [];
-    try {
-      const yRes = await yf.search(symbol, { newsCount: 10, quotesCount: 0 });
-      const raw = (yRes?.news || []).map(toArticle);
+      let yahooArticles = [];
+      try {
+        const yRes = await yf.search(symbol, { newsCount: 10, quotesCount: 0 });
+        const raw = (yRes?.news || []).map(toArticle);
 
-      if (!isCom && keywords.length > 0) {
-        const filtered = raw.filter(a => titleMatchesKeywords(a.title, keywords));
-        // Never fall back to unrelated articles: prefer 0 relevant over 8 irrelevant
-        yahooArticles = filtered;
-      } else {
-        yahooArticles = raw;
-      }
-
-      // For non-US tickers (exchange suffix .MI .DE .PA .L etc.), also query
-      // Yahoo by company name first word to catch English-language coverage
-      if (!isCom && symbol.includes('.') && companyName) {
-        const nameRoot = companyName.split(/\s+/)[0];
-        if (nameRoot && nameRoot.length >= 2) {
-          const yRes2 = await yf.search(nameRoot, { newsCount: 10, quotesCount: 0 }).catch(() => null);
-          const extra = (yRes2?.news || []).map(toArticle)
-            .filter(a => titleMatchesKeywords(a.title, keywords));
-          yahooArticles = [...yahooArticles, ...extra];
+        if (!isCom && keywords.length > 0) {
+          const filtered = raw.filter(a => titleMatchesKeywords(a.title, keywords));
+          // Never fall back to unrelated articles: prefer 0 relevant over 8 irrelevant
+          yahooArticles = filtered;
+        } else {
+          yahooArticles = raw;
         }
+
+        // For non-US tickers (exchange suffix .MI .DE .PA .L etc.), also query
+        // Yahoo by company name first word to catch English-language coverage
+        if (!isCom && symbol.includes('.') && companyName) {
+          const nameRoot = companyName.split(/\s+/)[0];
+          if (nameRoot && nameRoot.length >= 2) {
+            const yRes2 = await yf.search(nameRoot, { newsCount: 10, quotesCount: 0 }).catch(() => null);
+            const extra = (yRes2?.news || []).map(toArticle)
+              .filter(a => titleMatchesKeywords(a.title, keywords));
+            yahooArticles = [...yahooArticles, ...extra];
+          }
+        }
+      } catch {}
+
+      // ── 2. NewsAPI — precise query, relevance-filtered ────────────────────────
+      let newsApiArticles = [];
+      try {
+        let newsQ;
+        if (comNewsQ) {
+          newsQ = comNewsQ;
+        } else if (companyName) {
+          newsQ = `"${companyName}" OR "${symbol.split('.')[0]}"`;
+        } else {
+          newsQ = `"${symbol.split('.')[0]}"`;
+        }
+
+        const { data: newsData } = await axios.get('https://newsapi.org/v2/everything', {
+          params: { q: newsQ, sortBy: 'publishedAt', pageSize: 12, language: 'en', apiKey: NEWS_API_KEY },
+          timeout: 8000,
+        });
+
+        newsApiArticles = (newsData?.articles || []).filter(a => {
+          if (!a.title) return false;
+          if (isCom) return true;
+          return titleMatchesKeywords(a.title, keywords);
+        });
+      } catch {}
+
+      // ── 3. Merge: Yahoo first, then NewsAPI; deduplicate by title prefix ──────
+      const seen = new Set();
+      const articles = [];
+      for (const a of [...yahooArticles, ...newsApiArticles]) {
+        if (!a.title || !a.url) continue;
+        const key = a.title.slice(0, 80).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        articles.push(a);
       }
-    } catch {}
+      articles.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
-    // ── 2. NewsAPI — precise query, relevance-filtered ────────────────────────
-    let newsApiArticles = [];
-    try {
-      let newsQ;
-      if (comNewsQ) {
-        newsQ = comNewsQ;
-      } else if (companyName) {
-        newsQ = `"${companyName}" OR "${symbol.split('.')[0]}"`;
-      } else {
-        newsQ = `"${symbol.split('.')[0]}"`;
-      }
+      // ── 4. Gemini sentiment analysis ──────────────────────────────────────────
+      const headlines = articles.slice(0, 10).map(a => a.title).filter(Boolean).join('\n') || 'No news available';
+      const subjectLabel = companyName ? `${symbol} (${companyName})` : symbol;
+      const prompt = `Analizza il sentiment per ${subjectLabel} da queste notizie:\n${headlines}\nRispondi in JSON: {"label":"Bullish|Bearish|Neutro","score":<numero -100 a +100>,"positive":<count>,"neutral":<count>,"negative":<count>,"summary":"...breve in italiano..."}`;
 
-      const { data: newsData } = await axios.get('https://newsapi.org/v2/everything', {
-        params: { q: newsQ, sortBy: 'publishedAt', pageSize: 12, language: 'en', apiKey: NEWS_API_KEY },
-        timeout: 8000,
-      });
+      let result = { label: 'Neutro', score: 0, positive: 0, neutral: 0, negative: 0, summary: '' };
+      try {
+        const raw = await callGemini(prompt, 10000);
+        result = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+      } catch {}
 
-      newsApiArticles = (newsData?.articles || []).filter(a => {
-        if (!a.title) return false;
-        if (isCom) return true;
-        return titleMatchesKeywords(a.title, keywords);
-      });
-    } catch {}
+      return { ...result, articles: articles.slice(0, 8) };
+    }, 1800); // 30-min TTL
 
-    // ── 3. Merge: Yahoo first, then NewsAPI; deduplicate by title prefix ──────
-    const seen = new Set();
-    const articles = [];
-    for (const a of [...yahooArticles, ...newsApiArticles]) {
-      if (!a.title || !a.url) continue;
-      const key = a.title.slice(0, 80).toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      articles.push(a);
-    }
-    articles.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-
-    // ── 4. Gemini sentiment analysis ──────────────────────────────────────────
-    const headlines = articles.slice(0, 10).map(a => a.title).filter(Boolean).join('\n') || 'No news available';
-    const subjectLabel = companyName ? `${symbol} (${companyName})` : symbol;
-    const prompt = `Analizza il sentiment per ${subjectLabel} da queste notizie:\n${headlines}\nRispondi in JSON: {"label":"Bullish|Bearish|Neutro","score":<numero -100 a +100>,"positive":<count>,"neutral":<count>,"negative":<count>,"summary":"...breve in italiano..."}`;
-
-    let result = { label: 'Neutro', score: 0, positive: 0, neutral: 0, negative: 0, summary: '' };
-    try {
-      const raw = await callGemini(prompt, 10000);
-      result = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
-    } catch {}
-
-    res.json({ ...result, articles: articles.slice(0, 8) });
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1440,7 +1464,7 @@ router.post('/sentiment/:symbol', async (req, res) => {
 router.get('/earnings/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cachedLong(`earnings_${symbol}`, async () => {
+    const data = await cachedDB(`earnings:${symbol}`, async () => {
       const [calRes, histRes] = await Promise.allSettled([
         yf.quoteSummary(symbol, { modules: ['calendarEvents'] }),
         yf.quoteSummary(symbol, { modules: ['earningsHistory'] }),
@@ -1470,7 +1494,7 @@ router.get('/earnings/:symbol', async (req, res) => {
         epsHigh:     earnings.earningsHigh    ?? null,
         history,
       };
-    });
+    }, 21600); // 6h TTL
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1553,7 +1577,7 @@ router.get('/income-statement/:symbol', async (req, res) => {
 router.get('/analysts/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cachedLong(`analysts_${symbol}`, async () => {
+    const data = await cachedDB(`analysts:${symbol}`, async () => {
       const [recRes, fdRes] = await Promise.allSettled([
         yf.quoteSummary(symbol, { modules: ['recommendationTrend'] }),
         yf.quoteSummary(symbol, { modules: ['financialData'] }),
@@ -1575,7 +1599,7 @@ router.get('/analysts/:symbol', async (req, res) => {
         recommendation:   fd?.recommendationKey        ?? null,
         numberOfAnalysts: fd?.numberOfAnalystOpinions  ?? null,
       };
-    });
+    }, 21600); // 6h TTL
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -1613,7 +1637,7 @@ function toTitleCase(name) {
 router.get('/insider/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const data = await cachedLong(`insider_${symbol}`, async () => {
+    const data = await cachedDB(`insider:${symbol}`, async () => {
       const yRes = await yf.quoteSummary(symbol, { modules: ['insiderTransactions', 'price'] }).catch(() => null);
       const currency = yRes?.price?.currency ?? null;
       const transactions = yRes?.insiderTransactions?.transactions || [];
@@ -1638,7 +1662,7 @@ router.get('/insider/:symbol', async (req, res) => {
         })
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, 10);
-    });
+    }, 21600); // 6h TTL
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

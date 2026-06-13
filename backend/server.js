@@ -6,6 +6,11 @@ const compression = require('compression');
 const apiRoutes  = require('./routes/api');
 const authRoutes = require('./routes/auth');
 const userdataRoutes = require('./routes/userdata');
+const { cleanExpiredCache } = require('./cache');
+
+// Periodically purge expired cache entries (permanent entries, e.g. translations, are kept)
+cleanExpiredCache();
+setInterval(cleanExpiredCache, 60 * 60 * 1000);
 
 const app  = express();
 const PORT = process.env.PORT || 3001;

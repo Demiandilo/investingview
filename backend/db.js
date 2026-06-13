@@ -40,6 +40,16 @@ db.exec(`
   )
 `);
 
+// Shared cache for external API responses (quotes, profiles, translations, etc.)
+// expires_at is epoch ms; NULL means the entry never expires (e.g. translations).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cache (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    expires_at INTEGER
+  )
+`);
+
 // One-time import from the legacy users.json file (local dev only — gitignored, never deployed)
 const LEGACY_FILE = path.join(__dirname, 'users.json');
 const { n: userCount } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
