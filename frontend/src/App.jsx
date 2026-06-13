@@ -111,7 +111,7 @@ function AppInner() {
     setActiveSym(s);
     setPage("analisi");
     window.scrollTo(0, 0);
-    trackEvent("search", "ricerca_titolo", s);
+    trackEvent("search", "search_ticker", s);
     try {
       const prev = JSON.parse(localStorage.getItem("recent_searches") || "[]");
       const next = [s, ...prev.filter(x => x !== s)].slice(0, 5);
@@ -122,7 +122,7 @@ function AppInner() {
   const onAddWatch = useCallback(it => {
     setWatchlist(p => p.find(w => w.symbol === it.symbol) ? p : [...p, it]);
     API.addToWatchlist(it.symbol).catch(() => {});
-    trackEvent("watchlist", "aggiungi_watchlist", it.symbol);
+    trackEvent("watchlist", "add_to_watchlist", it.symbol);
   }, [setWatchlist]);
 
   const onRemoveWatch = useCallback(sym => {

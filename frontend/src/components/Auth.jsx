@@ -358,7 +358,7 @@ export default function Auth({ onAuth }) {
     setLoading(false);
     if (res?.success) {
       if (res.token) localStorage.setItem("investingview_token", res.token);
-      trackEvent("auth", "registrazione_completata", "success");
+      trackEvent("auth", "sign_up", "success");
       onAuth(res.user);
     } else {
       setError(res?.error || "Errore di connessione. Assicurati che il backend sia avviato su porta 3001.");

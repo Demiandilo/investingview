@@ -8,10 +8,7 @@ function gtag(...args) {
 
 /** Tracks a virtual page view, e.g. trackPageView("dashboard"), trackPageView("analisi"). */
 export function trackPageView(page) {
-  gtag("event", "page_view", {
-    page_title: page,
-    page_path: `/${page}`,
-  });
+  gtag("event", "page_view", { page_title: page });
 }
 
 /** Tracks a custom interaction, e.g. trackEvent("search", "ricerca_titolo", "AAPL"). */
