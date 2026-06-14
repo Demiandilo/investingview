@@ -74,6 +74,8 @@ export const API = {
     return Array.isArray(d) ? d : [];
   },
   async getTechnicalAnalysis(sym) { return await cachedGet(`/technical-analysis/${sym}`, 1_800_000); },
+  async getHealthScore(sym)       { return await cachedGet(`/health-score/${sym}`,       1_800_000); },
+  async getTechnicalSummary(sym)  { return await cachedGet(`/technical-summary/${sym}`,  1_800_000); },
 
   async getSectors()    { return await cachedGet("/sectors?v=2",   300_000) || []; },
   async getIndexes()    { return await cachedGet("/indexes",       60_000) || []; },

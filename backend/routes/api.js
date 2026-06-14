@@ -134,6 +134,106 @@ function computeRSI(closes, period = 14) {
   return +(100 - 100 / (1 + avgGain / avgLoss)).toFixed(2);
 }
 
+// ─── Technical summary indicator helpers (oldest → newest input arrays) ───
+
+/** Simple moving average of the last `period` values */
+function computeSMA(values, period) {
+  if (!values || values.length < period) return null;
+  const slice = values.slice(values.length - period);
+  return slice.reduce((s, v) => s + v, 0) / period;
+}
+
+/** EMA series aligned to `values` — entries before the seed window are null */
+function emaSeries(values, period) {
+  const out = new Array(values.length).fill(null);
+  if (values.length < period) return out;
+  const k = 2 / (period + 1);
+  let ema = values.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  out[period - 1] = ema;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+
+/** MACD(fast,slow,signal): { macd, signal, histogram } for the latest point, or null */
+function computeMACD(closes, fast = 12, slow = 26, signalPeriod = 9) {
+  if (!closes || closes.length < slow + signalPeriod) return null;
+  const emaFast = emaSeries(closes, fast);
+  const emaSlow = emaSeries(closes, slow);
+  const macdLine = closes
+    .map((_, i) => (emaFast[i] != null && emaSlow[i] != null) ? emaFast[i] - emaSlow[i] : null)
+    .filter(v => v != null);
+  const signalSeries = emaSeries(macdLine, signalPeriod);
+  const macd = macdLine[macdLine.length - 1];
+  const signal = signalSeries[signalSeries.length - 1];
+  if (macd == null || signal == null) return null;
+  return { macd: +macd.toFixed(4), signal: +signal.toFixed(4), histogram: +(macd - signal).toFixed(4) };
+}
+
+/** Stochastic Oscillator: %K(period) smoothed by smoothK, %D = SMA(%K, smoothD) */
+function computeStochastic(highs, lows, closes, period = 14, smoothK = 3, smoothD = 3) {
+  if (!closes || closes.length < period + smoothK + smoothD) return null;
+  const rawK = [];
+  for (let i = period - 1; i < closes.length; i++) {
+    const hh = Math.max(...highs.slice(i - period + 1, i + 1));
+    const ll = Math.min(...lows.slice(i - period + 1, i + 1));
+    rawK.push(hh === ll ? 50 : ((closes[i] - ll) / (hh - ll)) * 100);
+  }
+  const smoothedK = [];
+  for (let i = smoothK - 1; i < rawK.length; i++) {
+    const slice = rawK.slice(i - smoothK + 1, i + 1);
+    smoothedK.push(slice.reduce((s, v) => s + v, 0) / smoothK);
+  }
+  if (smoothedK.length < smoothD) return null;
+  const d = smoothedK.slice(-smoothD).reduce((s, v) => s + v, 0) / smoothD;
+  const k = smoothedK[smoothedK.length - 1];
+  return { k: +k.toFixed(2), d: +d.toFixed(2) };
+}
+
+/** Bollinger Bands(period, mult): { upper, middle, lower } for the latest point */
+function computeBollingerBands(closes, period = 20, mult = 2) {
+  if (!closes || closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const middle = slice.reduce((s, v) => s + v, 0) / period;
+  const variance = slice.reduce((s, v) => s + (v - middle) ** 2, 0) / period;
+  const sd = Math.sqrt(variance);
+  return { upper: +(middle + mult * sd).toFixed(4), middle: +middle.toFixed(4), lower: +(middle - mult * sd).toFixed(4) };
+}
+
+/** Average Directional Index (Wilder smoothing): { adx, plusDI, minusDI } for the latest point */
+function computeADX(highs, lows, closes, period = 14) {
+  const n = closes.length;
+  if (n < period * 2) return null;
+  const plusDM = [], minusDM = [], tr = [];
+  for (let i = 1; i < n; i++) {
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
+  }
+  const wilderSmooth = (arr) => {
+    const out = [];
+    let sum = arr.slice(0, period).reduce((s, v) => s + v, 0);
+    out.push(sum);
+    for (let i = period; i < arr.length; i++) { sum = sum - sum / period + arr[i]; out.push(sum); }
+    return out;
+  };
+  const trS = wilderSmooth(tr), plusS = wilderSmooth(plusDM), minusS = wilderSmooth(minusDM);
+  const plusDI = plusS.map((v, i) => trS[i] ? (v / trS[i]) * 100 : 0);
+  const minusDI = minusS.map((v, i) => trS[i] ? (v / trS[i]) * 100 : 0);
+  const dx = plusDI.map((v, i) => {
+    const sum = v + minusDI[i];
+    return sum ? (Math.abs(v - minusDI[i]) / sum) * 100 : 0;
+  });
+  if (dx.length < period) return null;
+  let adx = dx.slice(0, period).reduce((s, v) => s + v, 0) / period;
+  for (let i = period; i < dx.length; i++) adx = (adx * (period - 1) + dx[i]) / period;
+  return { adx: +adx.toFixed(2), plusDI: +plusDI[plusDI.length - 1].toFixed(2), minusDI: +minusDI[minusDI.length - 1].toFixed(2) };
+}
+
 // ─── Technical analysis helpers (support/resistance, trend, patterns) ─────
 
 /** Local pivot highs/lows: a candle whose high/low is the extreme within `window` candles on each side */
@@ -239,6 +339,11 @@ async function yahooRatios(symbol) {
   // Divide by 100 to normalise to FMP format so the frontend eval thresholds stay consistent.
   const debtEq = fd?.debtToEquity != null ? +(fd.debtToEquity / 100).toFixed(4) : undefined;
 
+  // Yahoo has no direct per-share cash flow figures — derive them from shares outstanding
+  const shares = ks?.sharesOutstanding;
+  const fcfPerShare = (fd?.freeCashflow      != null && shares) ? +(fd.freeCashflow      / shares).toFixed(4) : undefined;
+  const ocfPerShare = (fd?.operatingCashflow != null && shares) ? +(fd.operatingCashflow / shares).toFixed(4) : undefined;
+
   return {
     peRatioTTM:               sd?.trailingPE          ?? undefined,
     pegRatioTTM:              ks?.pegRatio             ?? undefined,
@@ -256,7 +361,8 @@ async function yahooRatios(symbol) {
     dividendYielTTM:          sd?.trailingAnnualDividendYield ?? undefined,
     netIncomePerShareTTM:     ks?.trailingEps          ?? undefined,
     bookValuePerShareTTM:     ks?.bookValue            ?? undefined,
-    freeCashFlowPerShareTTM:  undefined,
+    freeCashFlowPerShareTTM:  fcfPerShare,
+    operatingCashFlowPerShareTTM: ocfPerShare,
     evToEBITDATTM:            ks?.enterpriseToEbitda   ?? undefined,
     evToSalesTTM:             ks?.enterpriseToRevenue  ?? undefined,
     _source: 'yahoo',
@@ -472,6 +578,214 @@ const STATIC_POOL = [
   { symbol:'6861.T',   companyName:'Keyence Corp.',           sector:'Technology',           exchange:'TSE',  market:'GIAPPONE', marketCap:9.0e10, lastDividend:0 },
 ];
 
+// ─── Health Score: sector benchmark peers ─────────────────────────────────────
+// 5 large-cap US reference stocks per Yahoo sector, used to build the
+// valuation/momentum/cashflow/profitability/growth ranges a stock is scored against.
+const SECTOR_BENCHMARK_PEERS = {
+  'Technology':             ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL'],
+  'Healthcare':             ['UNH', 'JNJ', 'LLY', 'ABBV', 'MRK'],
+  'Financial Services':     ['JPM', 'V', 'MA', 'BAC', 'GS'],
+  'Consumer Cyclical':      ['AMZN', 'TSLA', 'HD', 'MCD', 'NKE'],
+  'Consumer Defensive':     ['WMT', 'PG', 'KO', 'COST', 'PEP'],
+  'Industrials':            ['GE', 'CAT', 'RTX', 'UNP', 'HON'],
+  'Energy':                 ['XOM', 'CVX', 'COP', 'SLB', 'EOG'],
+  'Utilities':              ['NEE', 'DUK', 'SO', 'D', 'AEP'],
+  'Real Estate':            ['PLD', 'AMT', 'EQIX', 'SPG', 'O'],
+  'Basic Materials':        ['LIN', 'SHW', 'FCX', 'NEM', 'APD'],
+  'Communication Services': ['GOOGL', 'META', 'NFLX', 'DIS', 'CMCSA'],
+};
+const DEFAULT_BENCHMARK_SECTOR = 'Industrials';
+
+// Metrics evaluated per health dimension, and whether a higher value is better.
+const DIMENSION_METRICS = {
+  valuation:     { pe: false, pb: false, peg: false },
+  momentum:      { perf3m: true, perf6m: true, perf12m: true, distMA50: true, rsi14: true },
+  cashflow:      { fcfMargin: true, ocfMargin: true },
+  profitability: { roe: true, roa: true, netMargin: true, opMargin: true },
+  growth:        { revenueGrowth: true, epsGrowth: true },
+};
+
+/** Single combined Yahoo quoteSummary call for valuation/profitability/growth/cashflow fields */
+async function fetchFundamentals(symbol) {
+  const q = await yf.quoteSummary(symbol, { modules: ['summaryDetail', 'defaultKeyStatistics', 'financialData'] }).catch(() => ({}));
+  return {
+    sd: q?.summaryDetail        || {},
+    ks: q?.defaultKeyStatistics || {},
+    fd: q?.financialData        || {},
+  };
+}
+
+/**
+ * Raw metrics (not yet scored) for the 5 health dimensions of a single stock.
+ * Used both for the analysed symbol and for each sector benchmark peer.
+ */
+async function getCompanyMetrics(symbol) {
+  const from = new Date(Date.now() - 400 * 86400000).toISOString().split('T')[0];
+  const [{ sd, ks, fd }, history] = await Promise.all([
+    fetchFundamentals(symbol),
+    yahooHistory(symbol, from, null).catch(() => []),
+  ]);
+
+  const closes = [...history].reverse().map(c => c.close).filter(v => v != null); // oldest -> newest
+  const lastClose = closes[closes.length - 1];
+
+  const perfPct = (tradingDaysBack) => {
+    const idx = closes.length - 1 - tradingDaysBack;
+    if (idx < 0 || !lastClose || closes[idx] == null) return null;
+    return +(((lastClose - closes[idx]) / closes[idx]) * 100).toFixed(2);
+  };
+
+  const ma50  = computeSMA(closes, 50);
+  const ma200 = computeSMA(closes, 200);
+  const rsi14 = computeRSI(closes, 14);
+
+  const revenue = fd?.totalRevenue;
+  const fcf = fd?.freeCashflow;
+  const ocf = fd?.operatingCashflow;
+
+  return {
+    valuation: {
+      pe:  sd?.trailingPE ?? null,
+      pb:  ks?.priceToBook ?? null,
+      peg: ks?.pegRatio ?? null,
+    },
+    profitability: {
+      roe:       fd?.returnOnEquity    != null ? fd.returnOnEquity    * 100 : null,
+      roa:       fd?.returnOnAssets    != null ? fd.returnOnAssets    * 100 : null,
+      netMargin: fd?.profitMargins     != null ? fd.profitMargins     * 100 : null,
+      opMargin:  fd?.operatingMargins  != null ? fd.operatingMargins  * 100 : null,
+    },
+    cashflow: {
+      fcfMargin: (fcf != null && revenue) ? (fcf / revenue) * 100 : null,
+      ocfMargin: (ocf != null && revenue) ? (ocf / revenue) * 100 : null,
+    },
+    growth: {
+      revenueGrowth: fd?.revenueGrowth != null ? fd.revenueGrowth * 100 : null,
+      epsGrowth:     fd?.earningsGrowth != null ? fd.earningsGrowth * 100 : null,
+    },
+    momentum: {
+      perf3m:    perfPct(63),
+      perf6m:    perfPct(126),
+      perf12m:   perfPct(252),
+      distMA50:  (ma50  && lastClose) ? +(((lastClose - ma50)  / ma50)  * 100).toFixed(2) : null,
+      distMA200: (ma200 && lastClose) ? +(((lastClose - ma200) / ma200) * 100).toFixed(2) : null,
+      rsi14: rsi14 ?? null,
+    },
+  };
+}
+
+/** Min/max range per metric across a sector's benchmark peers, cached for 24h */
+async function getSectorBenchmark(sector) {
+  const key = SECTOR_BENCHMARK_PEERS[sector] ? sector : DEFAULT_BENCHMARK_SECTOR;
+  return cachedDB(`sectorbench:${key}`, async () => {
+    const peers = SECTOR_BENCHMARK_PEERS[key];
+    const peerMetrics = await batchFetch(peers, sym => getCompanyMetrics(sym).catch(() => null), 5, 300);
+    const valid = peerMetrics.filter(Boolean);
+
+    const ranges = {};
+    for (const dim of Object.keys(DIMENSION_METRICS)) {
+      ranges[dim] = {};
+      for (const metric of Object.keys(DIMENSION_METRICS[dim])) {
+        const values = valid.map(m => m[dim]?.[metric]).filter(v => v != null && isFinite(v));
+        ranges[dim][metric] = values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
+      }
+    }
+    return ranges;
+  }, 86400); // 24h TTL
+}
+
+/** Maps a value into a 1-5 score based on its position within a sector peer range */
+function normalizeScore(value, range, higherIsBetter) {
+  if (value == null || !isFinite(value) || !range) return null;
+  const { min, max } = range;
+  if (min === max) return 3;
+  let pct = (value - min) / (max - min);
+  pct = Math.max(0, Math.min(1, pct));
+  if (!higherIsBetter) pct = 1 - pct;
+  return +(1 + pct * 4).toFixed(2);
+}
+
+/** Average 1-5 score for one health dimension, or null if no metric had data */
+function dimensionScore(metrics, ranges, dim) {
+  const defs = DIMENSION_METRICS[dim];
+  const scores = [];
+  for (const metric of Object.keys(defs)) {
+    const s = normalizeScore(metrics?.[dim]?.[metric], ranges?.[dim]?.[metric], defs[metric]);
+    if (s != null) scores.push(s);
+  }
+  if (!scores.length) return null;
+  return +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2);
+}
+
+/** 4-level rating (Debole/Discreta/Buona/Ottima) for a single dimension score */
+function dimensionRating(score) {
+  if (score == null) return null;
+  if (score < 2) return 'weak';
+  if (score < 3) return 'fair';
+  if (score < 4) return 'good';
+  return 'great';
+}
+
+/** 5-level rating (Debole..Eccellente) for the overall health score */
+function overallRating(score) {
+  if (score == null) return null;
+  if (score < 1.8) return 'weak';
+  if (score < 2.6) return 'fair';
+  if (score < 3.4) return 'good';
+  if (score < 4.2) return 'great';
+  return 'excellent';
+}
+
+/**
+ * Best-effort historical health scores from FMP annual data (US stocks only).
+ * Returns [] for symbols without FMP fundamentals coverage (e.g. non-US tickers).
+ */
+async function getHealthHistory(symbol, ranges) {
+  const [ratiosRes, growthRes] = await Promise.allSettled([
+    fmp('/ratios', { symbol, limit: 5 }),
+    fmp('/financial-growth', { symbol, limit: 5 }),
+  ]);
+  const ratiosArr = ratiosRes.status === 'fulfilled' && Array.isArray(ratiosRes.value) ? ratiosRes.value : [];
+  if (!ratiosArr.length) return [];
+  const growthArr = growthRes.status === 'fulfilled' && Array.isArray(growthRes.value) ? growthRes.value : [];
+  const growthByDate = new Map(growthArr.map(g => [g.date, g]));
+
+  const dims = ['valuation', 'profitability', 'cashflow', 'growth'];
+  return [...ratiosArr].reverse().map(r => { // oldest -> newest
+    const g = growthByDate.get(r.date) || {};
+    const metrics = {
+      valuation: {
+        pe:  r.priceToEarningsRatio ?? null,
+        pb:  r.priceToBookRatio ?? null,
+        peg: g.priceToEarningsGrowthRatio ?? null,
+      },
+      profitability: {
+        roe:       r.returnOnEquity          != null ? r.returnOnEquity          * 100 : null,
+        roa:       r.returnOnAssets          != null ? r.returnOnAssets          * 100 : null,
+        netMargin: r.netProfitMargin         != null ? r.netProfitMargin         * 100 : null,
+        opMargin:  r.operatingProfitMargin   != null ? r.operatingProfitMargin   * 100 : null,
+      },
+      cashflow: {
+        fcfMargin: (r.freeCashFlowOperatingCashFlowRatio != null && r.operatingCashFlowSalesRatio != null)
+          ? r.freeCashFlowOperatingCashFlowRatio * r.operatingCashFlowSalesRatio * 100 : null,
+        ocfMargin: r.operatingCashFlowSalesRatio != null ? r.operatingCashFlowSalesRatio * 100 : null,
+      },
+      growth: {
+        revenueGrowth: g.revenueGrowth != null ? g.revenueGrowth * 100 : null,
+        epsGrowth:     g.epsgrowth     != null ? g.epsgrowth     * 100 : null,
+      },
+    };
+    const scores = {};
+    for (const dim of dims) scores[dim] = dimensionScore(metrics, ranges, dim);
+    const valid = Object.values(scores).filter(v => v != null);
+    return {
+      year: r.date?.slice(0, 4),
+      ...scores,
+      overall: valid.length ? +(valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(2) : null,
+    };
+  });
+}
+
 // ─── Quote ───────────────────────────────────────────────────────────────────
 router.get('/quote/:symbol', async (req, res) => {
   try {
@@ -594,6 +908,7 @@ router.get('/ratios/:symbol', async (req, res) => {
         netIncomePerShareTTM:     r.netIncomePerShareTTM,
         bookValuePerShareTTM:     r.bookValuePerShareTTM,
         freeCashFlowPerShareTTM:  r.freeCashFlowPerShareTTM,
+        operatingCashFlowPerShareTTM: k.operatingCashFlowPerShareTTM,
         evToEBITDATTM:            k.evToEBITDATTM,
         evToSalesTTM:             k.evToSalesTTM,
       };
@@ -639,6 +954,51 @@ router.get('/growth/:symbol', async (req, res) => {
       return await yahooGrowth(symbol).catch(() => []);
     });
     res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Health Score: 5-dimension financial health vs sector peers ──────────────
+router.get('/health-score/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const data = await cachedDB(`healthscore:${symbol}`, async () => {
+      const profile = await yahooProfile(symbol).catch(() => []);
+      const sector = profile[0]?.sector;
+
+      const [metrics, ranges] = await Promise.all([
+        getCompanyMetrics(symbol),
+        getSectorBenchmark(sector),
+      ]);
+
+      const dimensions = {};
+      for (const dim of Object.keys(DIMENSION_METRICS)) {
+        const score = dimensionScore(metrics, ranges, dim);
+        const sliders = {};
+        for (const metric of Object.keys(DIMENSION_METRICS[dim])) {
+          sliders[metric] = {
+            value: metrics[dim]?.[metric] ?? null,
+            min:   ranges[dim]?.[metric]?.min ?? null,
+            max:   ranges[dim]?.[metric]?.max ?? null,
+            higherIsBetter: DIMENSION_METRICS[dim][metric],
+          };
+        }
+        dimensions[dim] = { score, rating: dimensionRating(score), metrics: sliders };
+      }
+
+      const dimScores = Object.values(dimensions).map(d => d.score).filter(v => v != null);
+      const overallScore = dimScores.length ? +(dimScores.reduce((a, b) => a + b, 0) / dimScores.length).toFixed(2) : null;
+
+      const history = await getHealthHistory(symbol, ranges).catch(() => []);
+
+      return {
+        symbol,
+        sector: sector ?? null,
+        overall: { score: overallScore, rating: overallRating(overallScore) },
+        dimensions,
+        history,
+      };
+    }, 6 * 3600); // 6h TTL
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1118,6 +1478,87 @@ router.get('/technical-analysis/:symbol', async (req, res) => {
         supports,
         resistances,
         pattern,
+      };
+    }, 3600); // 1h TTL
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Technical Summary: oscillators, moving averages, aggregate verdict ──────
+router.get('/technical-summary/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const data = await cachedDB(`techsummary:${symbol}`, async () => {
+      const from = new Date(Date.now() - 320 * 86400000).toISOString().split('T')[0];
+      const history = await yahooHistory(symbol, from, null).catch(() => []);
+      const candles = [...history].reverse() // oldest -> newest
+        .filter(c => c.high != null && c.low != null && c.close != null);
+
+      if (candles.length < 35) {
+        return { symbol, currentPrice: null, verdict: null, summary: null, oscillators: [], movingAverages: [] };
+      }
+
+      const closes = candles.map(c => c.close);
+      const highs  = candles.map(c => c.high);
+      const lows   = candles.map(c => c.low);
+      const currentPrice = closes[closes.length - 1];
+
+      const rsi14  = computeRSI(closes, 14);
+      const stoch  = computeStochastic(highs, lows, closes, 14, 3, 3);
+      const macd   = computeMACD(closes, 12, 26, 9);
+      const adx    = computeADX(highs, lows, closes, 14);
+      const bbands = computeBollingerBands(closes, 20, 2);
+      const ma20   = computeSMA(closes, 20);
+      const ma50   = computeSMA(closes, 50);
+      const ma100  = computeSMA(closes, 100);
+      const ma200  = computeSMA(closes, 200);
+
+      const round2 = v => v == null ? null : +v.toFixed(2);
+
+      const oscillators = [];
+      if (rsi14 != null) {
+        oscillators.push({ key: 'rsi14', value: rsi14, signal: rsi14 < 30 ? 'buy' : rsi14 > 70 ? 'sell' : 'neutral' });
+      }
+      if (stoch) {
+        oscillators.push({ key: 'stoch', value: { k: stoch.k, d: stoch.d }, signal: stoch.k < 20 ? 'buy' : stoch.k > 80 ? 'sell' : 'neutral' });
+      }
+      if (macd) {
+        oscillators.push({ key: 'macd', value: { macd: round2(macd.macd), signal: round2(macd.signal), histogram: round2(macd.histogram) }, signal: macd.macd > macd.signal ? 'buy' : macd.macd < macd.signal ? 'sell' : 'neutral' });
+      }
+      if (adx) {
+        const trendSignal = adx.adx >= 25 ? (adx.plusDI > adx.minusDI ? 'buy' : 'sell') : 'neutral';
+        oscillators.push({ key: 'adx', value: { adx: adx.adx, plusDI: adx.plusDI, minusDI: adx.minusDI }, signal: trendSignal });
+      }
+      if (bbands) {
+        oscillators.push({ key: 'bbands', value: { upper: round2(bbands.upper), middle: round2(bbands.middle), lower: round2(bbands.lower) }, signal: currentPrice < bbands.lower ? 'buy' : currentPrice > bbands.upper ? 'sell' : 'neutral' });
+      }
+
+      const movingAverages = [];
+      for (const [key, ma] of [['ma20', ma20], ['ma50', ma50], ['ma100', ma100], ['ma200', ma200]]) {
+        if (ma != null) movingAverages.push({ key, value: round2(ma), signal: currentPrice > ma ? 'buy' : currentPrice < ma ? 'sell' : 'neutral' });
+      }
+
+      const allSignals = [...oscillators, ...movingAverages].map(i => i.signal);
+      const buy = allSignals.filter(s => s === 'buy').length;
+      const sell = allSignals.filter(s => s === 'sell').length;
+      const neutral = allSignals.filter(s => s === 'neutral').length;
+      const total = allSignals.length;
+      const score = total ? (buy - sell) / total : 0;
+
+      let verdict = 'neutral';
+      if (score <= -0.5) verdict = 'strong_sell';
+      else if (score <= -0.1) verdict = 'sell';
+      else if (score < 0.1) verdict = 'neutral';
+      else if (score < 0.5) verdict = 'buy';
+      else verdict = 'strong_buy';
+
+      return {
+        symbol,
+        currentPrice: round2(currentPrice),
+        verdict,
+        summary: { buy, sell, neutral, total, score: +score.toFixed(2) },
+        oscillators,
+        movingAverages,
       };
     }, 3600); // 1h TTL
     res.json(data);

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, memo, Component } from "reac
 import { API, fmt, fmtPrice, fmtMoneyShort, M, calcRSI, useLocalStorage, getZonedMinutes } from "../api.js";
 import { MetricTile } from "./ui/MetricTile.jsx";
 import { Spinner, Skeleton } from "./ui/Spinner.jsx";
-import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart, FinancialHistoryChart } from "./ui/Charts.jsx";
+import { CandlestickChart, HistoricalChart, ComparisonChart, DividendsChart, SentimentBarChart, FinancialHistoryChart, SegmentedGauge, GAUGE_COLORS } from "./ui/Charts.jsx";
+import SaluteTab from "./SaluteTab.jsx";
 import { useToast } from "./ui/Toast.jsx";
 import { useLang } from "../i18n.js";
 
@@ -197,6 +198,7 @@ function TecnicaTab({ symbol, q, hist, dark }) {
   const [candles, setCandles] = useState([]);
   const [candleLoading, setCandleLoading] = useState(false);
   const [ta, setTa] = useState(null);
+  const [ts, setTs] = useState(null);
 
   useEffect(() => {
     if (!symbol) return;
@@ -210,6 +212,12 @@ function TecnicaTab({ symbol, q, hist, dark }) {
     if (!symbol) return;
     setTa(null);
     API.getTechnicalAnalysis(symbol).then(setTa).catch(() => setTa(null));
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol) return;
+    setTs(null);
+    API.getTechnicalSummary(symbol).then(setTs).catch(() => setTs(null));
   }, [symbol]);
 
   // RSI from last 30 close prices (calculated from history)
@@ -229,6 +237,7 @@ function TecnicaTab({ symbol, q, hist, dark }) {
 
   return (
     <div className="fade">
+      <TechnicalSummaryCard ts={ts} q={q} />
       <div className="stagger metric-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(175px,1fr))", gap: 12, marginBottom: 20 }}>
         <MetricTile label={t("analysis.metrics.price")}    value={fmtPrice(q?.price, q?.currency)} />
         <MetricTile label={t("analysis.metrics.open")}     value={fmtPrice(q?.open, q?.currency)} tip={t("analysis.tips.open")} />
@@ -260,6 +269,85 @@ function TecnicaTab({ symbol, q, hist, dark }) {
         }
       </div>
       <AnalisiGraficaCard ta={ta} q={q} />
+    </div>
+  );
+}
+
+/* ─── Technical Summary Card — aggregate verdict + oscillators/MAs table ───── */
+const VERDICT_TO_GAUGE = { strong_sell: 1, sell: 2, neutral: 3, buy: 4, strong_buy: 5 };
+const SIGNAL_PILL = { buy: "pill-green", sell: "pill-red", neutral: "pill-gold" };
+
+function oscillatorValueLabel(key, value, ccy) {
+  switch (key) {
+    case "rsi14":  return value.toFixed(2);
+    case "stoch":  return `${value.k.toFixed(2)} / ${value.d.toFixed(2)}`;
+    case "macd":   return `${value.macd.toFixed(2)} / ${value.signal.toFixed(2)}`;
+    case "adx":    return `${value.adx.toFixed(2)} (+DI ${value.plusDI.toFixed(2)} / -DI ${value.minusDI.toFixed(2)})`;
+    case "bbands": return `${fmtPrice(value.lower, ccy)} – ${fmtPrice(value.upper, ccy)}`;
+    default: return "—";
+  }
+}
+
+function TechnicalSummaryCard({ ts, q }) {
+  const { t } = useLang();
+  if (!ts || !ts.verdict) {
+    return (
+      <div className="card" style={{ padding: "22px 24px", marginBottom: 20, textAlign: "center", color: "var(--text3)", fontSize: 13 }}>
+        {t("analysis.technical.summary.noData")}
+      </div>
+    );
+  }
+  const ccy = q?.currency;
+  const gaugeIdx = VERDICT_TO_GAUGE[ts.verdict] - 1;
+
+  const oscillatorRows = ts.oscillators.map(o => ({ ...o, label: t(`analysis.technical.summary.indicators.${o.key}`), display: oscillatorValueLabel(o.key, o.value, ccy) }));
+  const maRows = ts.movingAverages.map(m => ({ ...m, label: t(`analysis.technical.summary.indicators.${m.key}`), display: fmtPrice(m.value, ccy) }));
+
+  const sectionRowStyle = { fontWeight: 700, color: "var(--text2)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em", background: "var(--surface2)" };
+
+  return (
+    <div className="card" style={{ padding: "22px 24px", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 18 }}>
+        <div>
+          <p className="section-label" style={{ marginBottom: 4 }}>{t("analysis.technical.summary.title")}</p>
+          <div style={{ fontSize: 26, fontWeight: 800, color: GAUGE_COLORS[gaugeIdx] }}>{t(`analysis.technical.summary.verdicts.${ts.verdict}`)}</div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>
+          {t("analysis.technical.summary.counts", { buy: ts.summary.buy, neutral: ts.summary.neutral, sell: ts.summary.sell })}
+        </div>
+      </div>
+      <SegmentedGauge score={gaugeIdx + 1} />
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, marginBottom: 20, maxWidth: 280 }}>
+        <span style={{ fontSize: 11, color: "var(--text3)" }}>{t("analysis.technical.summary.verdicts.strong_sell")}</span>
+        <span style={{ fontSize: 11, color: "var(--text3)" }}>{t("analysis.technical.summary.verdicts.strong_buy")}</span>
+      </div>
+      <table className="data-table" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th>{t("analysis.technical.summary.table.indicator")}</th>
+            <th>{t("analysis.technical.summary.table.value")}</th>
+            <th>{t("analysis.technical.summary.table.action")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colSpan={3} style={sectionRowStyle}>{t("analysis.technical.summary.oscillators")}</td></tr>
+          {oscillatorRows.map(r => (
+            <tr key={r.key}>
+              <td>{r.label}</td>
+              <td>{r.display}</td>
+              <td><span className={`pill ${SIGNAL_PILL[r.signal]}`} style={{ fontSize: 11 }}>{t(`analysis.technical.summary.${r.signal}`)}</span></td>
+            </tr>
+          ))}
+          <tr><td colSpan={3} style={sectionRowStyle}>{t("analysis.technical.summary.movingAverages")}</td></tr>
+          {maRows.map(r => (
+            <tr key={r.key}>
+              <td>{r.label}</td>
+              <td>{r.display}</td>
+              <td><span className={`pill ${SIGNAL_PILL[r.signal]}`} style={{ fontSize: 11 }}>{t(`analysis.technical.summary.${r.signal}`)}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -842,7 +930,7 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
   const tabs = isCommodityMode
     ? [{ id: "fondamentali", l: tabDefs.info || "Info" }, { id: "tecnica", l: tabDefs.tecnica }]
     : [
-        { id: "fondamentali", l: tabDefs.fondamentali }, { id: "tecnica", l: tabDefs.tecnica },
+        { id: "fondamentali", l: tabDefs.fondamentali }, { id: "salute", l: tabDefs.salute }, { id: "tecnica", l: tabDefs.tecnica },
         { id: "confronto", l: tabDefs.confronto }, { id: "dividendi", l: tabDefs.dividendi },
         { id: "insider", l: tabDefs.insider },
         { id: "sentiment", l: tabDefs.sentiment }, { id: "short", l: tabDefs.short },
@@ -1024,6 +1112,13 @@ export default function StockAnalysis({ initSym, onAddWatchlist, onRemoveWatchli
               <MetricTile label={metrics.low52}     value={fmtPrice(q?.yearLow, q?.currency)}  tip={tips.yearLow} />
               </div>
             </div>
+          )}
+
+          {/* Tab: Salute (financial health) */}
+          {tab === "salute" && !isCommodityMode && (
+            <ErrorBoundary>
+              <SaluteTab symbol={inp} dark={dark} />
+            </ErrorBoundary>
           )}
 
           {/* Tab: Tecnica */}

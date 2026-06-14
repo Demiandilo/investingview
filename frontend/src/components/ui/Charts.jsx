@@ -387,6 +387,52 @@ export function FearGreedGauge({ score = 50, width = 200 }) {
   );
 }
 
+/* ─── Segmented Gauge — 5-level colour bar with position marker ──────────── */
+// Used for the overall financial health score and the technical analysis verdict.
+export const GAUGE_COLORS = ["#ef5350", "#ff9f0a", "#f5c518", "#9ccc65", "#26a69a"];
+
+export function SegmentedGauge({ score, width = 280, height = 10 }) {
+  const clamped = Math.max(1, Math.min(5, score ?? 1));
+  const pct = ((clamped - 1) / 4) * 100;
+
+  return (
+    <div style={{ width: "100%", maxWidth: width, position: "relative", paddingTop: 12 }}>
+      <div style={{
+        position: "absolute", top: 0, left: `${pct}%`, transform: "translateX(-50%)",
+        width: 0, height: 0,
+        borderLeft: "6px solid transparent", borderRight: "6px solid transparent",
+        borderTop: "8px solid var(--text)",
+      }} />
+      <div style={{ display: "flex", height, borderRadius: height / 2, overflow: "hidden" }}>
+        {GAUGE_COLORS.map((c, i) => <div key={i} style={{ flex: 1, background: c }} />)}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Health History Chart — multi-line evolution of dimension scores ────── */
+export function HealthHistoryChart({ data, series, dark }) {
+  if (!data?.length) return null;
+  const gridColor = dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)";
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -16 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+        <XAxis dataKey="year" tick={{ fontSize: 11, fill: "var(--text3)" }} axisLine={false} tickLine={false} />
+        <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: "var(--text3)" }} axisLine={false} tickLine={false} width={28} />
+        <Tooltip
+          contentStyle={{ borderRadius: 8, fontSize: 12, border: "1px solid var(--border2)", background: "var(--card)" }}
+          labelStyle={{ fontWeight: 600, color: "var(--text)" }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {series.map(s => (
+          <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function SectorBarChart({ sectors, maxItems = 11 }) {
   // Dedup by Italian name using Map (Map preserves insertion order, keeps first occurrence)
   const byName = new Map();
